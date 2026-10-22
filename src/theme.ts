@@ -5,6 +5,7 @@ export const colors = {
   muted: '#5F6670',
   border: '#D9DDE3',
   primary: '#1F6FEB',
+  primarySoft: '#E8F0FE',
   onPrimary: '#FFFFFF',
   danger: '#C62828',
   dangerBg: '#FDECEC',

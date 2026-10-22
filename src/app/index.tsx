@@ -122,8 +122,10 @@ function BalanceRow({ item }: { item: Balance }) {
   const myClaims = myClaimsStore.useValue();
   const intent = intentStore.useValue();
   // One claim per asset at a time, and none while a result is unknown.
-  const claimDisabled =
+  const inProgress =
     !!intent || myClaims.some((c) => c.asset === item.asset && c.status === 'pending');
+  const nothingToClaim = item.available === 0n;
+  const claimDisabled = inProgress || nothingToClaim;
   return (
     <View style={styles.card}>
       <View style={styles.rowHeader}>
@@ -140,7 +142,11 @@ function BalanceRow({ item }: { item: Balance }) {
         accessibilityRole="button"
       >
         <Text style={styles.claimText}>
-          {claimDisabled ? 'Claim in progress' : `Claim ${item.asset}`}
+          {inProgress
+            ? 'Claim in progress'
+            : nothingToClaim
+              ? 'Nothing to claim'
+              : `Claim ${item.asset}`}
         </Text>
       </Pressable>
     </View>

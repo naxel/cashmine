@@ -209,17 +209,25 @@ function ClaimForm({
           {destinations.length > 1 && (
             <>
               <Text style={styles.label}>Destination</Text>
-              {destinations.map((d) => (
-                <Pressable
-                  key={d.id}
-                  style={[styles.option, destination?.id === d.id && styles.optionSelected]}
-                  onPress={() => setDestinationId(d.id)}
-                  accessibilityRole="radio"
-                  accessibilityState={{ selected: destination?.id === d.id }}
-                >
-                  <Text style={styles.optionText}>{d.label}</Text>
-                </Pressable>
-              ))}
+              {destinations.map((d) => {
+                const selected = destination?.id === d.id;
+                return (
+                  <Pressable
+                    key={d.id}
+                    style={[styles.option, selected && styles.optionSelected]}
+                    onPress={() => setDestinationId(d.id)}
+                    accessibilityRole="radio"
+                    accessibilityState={{ selected }}
+                  >
+                    <View style={[styles.radio, selected && styles.radioSelected]}>
+                      {selected && <View style={styles.radioDot} />}
+                    </View>
+                    <Text style={[styles.optionText, selected && styles.optionTextSelected]}>
+                      {d.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
               {showErrors && !destination && (
                 <Text style={styles.errorText}>Choose a destination.</Text>
               )}
@@ -370,14 +378,29 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
   },
   option: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: 10,
     padding: 12,
     backgroundColor: colors.surface,
   },
-  optionSelected: { borderColor: colors.primary },
-  optionText: { color: colors.text, fontSize: 15 },
+  optionSelected: { borderColor: colors.primary, backgroundColor: colors.primarySoft },
+  optionText: { flex: 1, color: colors.text, fontSize: 15 },
+  optionTextSelected: { fontWeight: '600' },
+  radio: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  radioSelected: { borderColor: colors.primary },
+  radioDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: colors.primary },
   summary: { backgroundColor: colors.surface, borderRadius: 12, padding: 14, gap: 6 },
   row: { flexDirection: 'row', justifyContent: 'space-between', gap: 12 },
   rowLabel: { color: colors.muted, fontSize: 15 },
