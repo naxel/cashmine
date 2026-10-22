@@ -26,10 +26,14 @@
   before the server confirms is what causes "dropped, then jumped back". Note: a same-key retry is not a pure
   status check; if the first request never arrived, it creates the claim, which is what the user confirmed.
   4xx answers (VALIDATION, 409) are definite: no claim, message shown, form kept.
+  Tested offline on the live build: 4 failed POSTs (first try + 3 quiet retries), the "couldn't confirm" screen,
+  then Retry returned one 201, so one claim was created (`docs/unknown-outcome-network.png`,
+  `docs/unknown-outcome-screen.png`).
 - **USD total = available + pending + claiming.** The whole payback position; per-asset rows show what is
   claimable now.
 - **Direct API calls, no proxy.** The API has open CORS and the token belongs to the user, so nothing secret sits
-  server-side; the app is a static web build.
+  server-side; the app is a static web build. I started from my own starter script (lint, format, and a server
+  proxy for a secret token) and removed the proxy after reading the brief and the docs.
 - **Token in localStorage.** Required by the brief. Readable by any script on the page (XSS); acceptable because
   the app loads no third-party scripts. Changing the token clears cached data and local claims.
 
@@ -42,8 +46,42 @@
 
 ## Working with AI
 
-TODO: three moments with pointers into `ai-logs/`.
+All code was written in one Claude Code session in this folder (`ai-logs/claude-code-session.txt`). I also used a
+second chat as a reviewer: I pasted plans and outputs there before approving them. It is mixed with private notes,
+so it is not included; every change that came out of it went into the main session as my prompt. After reading the
+docs, I had the AI write the domain rules into `AGENTS.md`, so later prompts shared the same rules for amounts,
+idempotency and errors.
+
+1. **A prompt that did not get what I wanted.** My first prompt asked for a docs summary and a plan. The plan said
+   to commit "only if the user asks" and to verify the schema with `curl` and my token in the shell. Both were wrong
+   here: the brief wants commits every 30 minutes, and a token in the session would end up in this public log. I
+   asked for a commit after each step, and ran the `curl` myself in a separate terminal, pasting only the JSON.
+   (Search the log: "commit everything", "Real /v1/balances response".)
+2. **AI output that was wrong.** After the claim flow, all 36 unit tests passed and the build was deployed, but the
+   app crashed on first open: "React has detected a change in the order of Hooks called by Home". I found it only
+   by opening the live build myself. The cause: the localStorage hook was named `use()` and called as `store.use()`.
+   React Compiler is on, and it treats `use` as React's `use()` API, not as a hook. Fix: rename it to `useValue`.
+   Lesson: the tests cover pure money logic, not rendering, so I open the build after every deploy.
+   (Search: "order of Hooks".)
+3. **I disagreed with the AI.** For the balance after a claim, the AI offered three approaches and picked B. I agreed
+   with B, but in its version the submitted claims lived only in memory. A reload within 15 s would show the old
+   balance again, which is exactly the complaint "I claimed and my balance didn't change, so I claimed again". I
+   asked to persist them in localStorage and restore the adjustment on load, with tests. (Search: "Persist my
+   submitted claims".) The AI also pushed back on one of my rules, and it was right: see the refinement under the
+   balance decision.
+
+My own checks on the live build found two more issues the AI did not: the Claim button was active for an asset
+with 0 available, and destination options looked like text fields. Both were fixed.
 
 ## Not done / known issues
 
-TODO.
+- **Activity** (paginated history) is not built. Next: `useInfiniteQuery` on `/v1/activity` with `nextCursor`.
+- **Changing the token** clears saved claims and any unconfirmed attempt from the old token, so an unresolved
+  attempt is lost. Better: keep claims and attempts per token.
+- **Tests** cover amount parsing, validation, fee, USD totals and the displayed balance. There are no component or
+  end-to-end tests; the crash above shows the gap. Next: one Playwright test of the claim flow with a mocked API.
+- **Max** uses the snapshot's `available`, which can be up to 15 s old. The server checks live and returns
+  VALIDATION, which the form shows inline.
+- **After a deploy**, a tab left open can fail to load old JS chunks (404) until reloaded. Next: catch chunk-load
+  errors and reload once.
+- Idempotency key retention is not documented (see Assumptions).
