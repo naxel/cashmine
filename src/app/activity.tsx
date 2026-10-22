@@ -81,7 +81,16 @@ function Row({ item, amount }: { item: ActivityItem; amount: string }) {
           {new Date(item.createdAt).toLocaleString()} · {item.status}
         </Text>
       </View>
-      <Text style={[styles.amount, item.amount.startsWith('-') && styles.negative]} selectable>
+      <Text
+        style={[
+          styles.amount,
+          // A failed claim's amount went back to available: show it as void, not as a debit.
+          item.type === 'claim' && item.status === 'failed'
+            ? styles.voided
+            : item.amount.startsWith('-') && styles.negative,
+        ]}
+        selectable
+      >
         {amount} {item.asset}
       </Text>
     </View>
@@ -112,6 +121,7 @@ const styles = StyleSheet.create({
     textAlign: 'right',
   },
   negative: { color: colors.danger },
+  voided: { color: colors.muted, textDecorationLine: 'line-through' },
   footer: { gap: 8, paddingVertical: 8 },
   button: {
     backgroundColor: colors.primary,
