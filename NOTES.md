@@ -56,7 +56,7 @@ idempotency and errors.
    to commit "only if the user asks" and to verify the schema with `curl` and my token in the shell. Both were wrong
    here: the brief wants commits every 30 minutes, and a token in the session would end up in this public log. I
    asked for a commit after each step, and ran the `curl` myself in a separate terminal, pasting only the JSON.
-   (Search the log: "commit everything", "Real /v1/balances response".)
+   (Search the log: "only if user asks", "Real /v1/balances response".)
 2. **AI output that was wrong.** After the claim flow, all 36 unit tests passed and the build was deployed, but the
    app crashed on first open: "React has detected a change in the order of Hooks called by Home". I found it only
    by opening the live build myself. The cause: the localStorage hook was named `use()` and called as `store.use()`.
@@ -66,8 +66,8 @@ idempotency and errors.
 3. **I disagreed with the AI.** For the balance after a claim, the AI offered three approaches and picked B. I agreed
    with B, but in its version the submitted claims lived only in memory. A reload within 15 s would show the old
    balance again, which is exactly the complaint "I claimed and my balance didn't change, so I claimed again". I
-   asked to persist them in localStorage and restore the adjustment on load, with tests. (Search: "Persist my
-   submitted claims".) The AI also pushed back on one of my rules, and it was right: see the refinement under the
+   asked to persist them in localStorage and restore the adjustment on load, with tests. (Search: "One gap in
+   1-B".) The AI also pushed back on one of my rules, and it was right: see the refinement under the
    balance decision.
 
 My own checks on the live build found two more issues the AI did not: the Claim button was active for an asset

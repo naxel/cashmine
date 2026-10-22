@@ -1,0 +1,2747 @@
+ ▐▛███▛█   Claude Code v2.1.306
+▝▜██████▀  Opus 5.5 · Claude Pro
+ ▝▝   ▝▝   ~/projects/cashmine
+
+
+❯ Brief for this task is in BRIEF.md (I'll paste it). API docs:                 
+  https://task-api.cashmine.io/docs — fetch and read them fully first.          
+  Changes to the scaffold:                                                      
+  - Write src/api/client.ts: API base URL as one constant, token read from      
+  localStorage, sent as the auth header the docs specify. Use 'zod'.            
+  - Update AGENTS.md: add "token is entered by the user, stored in              
+  localStorage, never in code".                                                 
+  - NOTES.md: (Decisions / Working with AI / Not done).                         
+  - README.md: live link, run locally, what works.                              
+    Then, before any UI code: summarize from the docs the endpoints, the amount 
+  format, claim rules (min, fee, decimals, limits), claim statuses,             
+  idempotency, and errors. Write the claim/amount rules into AGENTS.md under    
+  Domain rules. Don't write UI yet.                                             
+    Always ask me questions if something is unclear                             
+
+⏺ Start: read repo state + fetch API docs.
+
+  Read 1 file, ran 1 shell command (ctrl+o to expand)
+
+⏺ Fetch(https://task-api.cashmine.io/docs)
+  ⎿  Received 4.8KB (200 OK)
+
+⏺ Summary model may drop detail. Pull raw docs to verify schemas.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ Docs read (raw). Check app.json + existing src before plan.
+
+  Read 2 files, listed 1 directory (ctrl+o to expand)
+
+⏺ Docs read fully (raw text, not only summary). Few decisions are yours before
+  planning.
+
+⏺ User answered Claude's questions:
+  ⎿  · How should amounts be represented and calculated? (Brief wants this as a 
+     Decision in NOTES.md.) → BigInt minor units (Recommended)
+     · What should 'total in USD' on Home sum? Docs don't define it. → 
+     available+pending+claiming
+     · NOTES.md now: Decisions for balance-after-claim and unknown-result aren't
+     made yet (brief requires an AI conversation with ≥2 approaches first). 
+     What goes in now? → Skeleton + decided items (Recommended)
+
+⏺ Updated plan
+  ⎿  /plan to preview
+
+⏺ Updated plan
+  ⎿  /plan to preview
+
+⏺ Updated plan
+  ⎿  /plan to preview
+  ⎿  User rejected Claude's plan:
+     ╭─────────────────────────────────────────────────────────────────────────╮
+     │ Plan: scaffold changes + API rules (no UI)                              │
+     │                                                                         │
+     │ Context                                                                 │
+     │                                                                         │
+     │ CashMine take-home (BRIEF.md): Expo web app showing payback balances +  │
+     │ claim flow. Token must be entered by user, kept in browser, never in    │
+     │ code/repo/build. API base URL in one place. User removed server proxy + │
+     │ .env.example (unstaged deletes) and trimmed AGENTS.md. Docs             │
+     │ (https://task-api.cashmine.io/docs, read raw) confirm CORS open to any  │
+     │ origin (access-control-allow-headers: Authorization, Content-Type,      │
+     │ Idempotency-Key, exposes Retry-After, Idempotent-Replayed) → client     │
+     │ calls API directly.                                                     │
+     │                                                                         │
+     │ Time warning: submission deadline 2026-10-22 10:00 UTC; now ~08:30 UTC. │
+     │ Commit every 30 min.                                                    │
+     │                                                                         │
+     │ User decisions: amounts = BigInt minor units; USD total =               │
+     │ available+pending+claiming; NOTES.md = skeleton + settled items only.   │
+     │                                                                         │
+     │ Changes                                                                 │
+     │                                                                         │
+     │ 1. src/api/client.ts (new)                                              │
+     │                                                                         │
+     │ - export const API_BASE_URL = 'https://task-api.cashmine.io/v1'; — only │
+     │   place.                                                                │
+     │ - Token: TOKEN_KEY = 'cashmine.token';                                  │
+     │   getToken()/setToken()/clearToken() wrapping localStorage in try/catch │
+     │   and typeof window guard (web.output is static → prerender has no      │
+     │   window).                                                              │
+     │ - api<T>(path, schema: z.ZodType<T>, init?: { method?, body?, headers?, │
+     │   signal?, timeoutMs? }):                                               │
+     │   - headers Authorization: Bearer <token>, Accept/Content-Type:         │
+     │     application/json, body JSON-stringified.                            │
+     │   - Timeout via AbortController (default 15 s).                         │
+     │   - Non-2xx → parse { error: { code, message, field?, retryAfterMs? } } │
+     │     with zod → throw ApiError { status, code, message, field?,          │
+     │     retryAfterMs? }; retryAfterMs falls back to Retry-After header      │
+     │     ×1000.                                                              │
+     │   - Network failure / abort → ApiError code NETWORK (or TIMEOUT on      │
+     │     abort) with outcomeUnknown: true; 504 also outcomeUnknown: true.    │
+     │   - 2xx → schema.parse(json) (zod v4), returns T. (Idempotent-Replayed  │
+     │     not surfaced yet; add if claim UI needs it.)                        │
+     │   - Missing token → throw ApiError code UNAUTHORIZED without fetching.  │
+     │ - No endpoint schemas/hooks yet (UI phase). import { z } from 'zod'.    │
+     │                                                                         │
+     │ 2. AGENTS.md                                                            │
+     │                                                                         │
+     │ - Top section add: "API token is entered by the user, stored in         │
+     │   localStorage, never in code."                                         │
+     │ - Replace CORS bullet (contradicts current setup) with: "Task API has   │
+     │   open CORS; client calls it directly via api() in src/api/client.ts;   │
+     │   base URL constant lives only there. Do not write another client."     │
+     │ - Fill ## Domain rules (see rules below, condensed).                    │
+     │                                                                         │
+     │ 3. NOTES.md (new) — headings Decisions / Working with AI / Not done.    │
+     │                                                                         │
+     │ Decisions now: direct calls (open CORS, no proxy needed, nothing secret │
+     │ server-side); token in localStorage per brief (XSS exposure accepted,   │
+     │ no 3rd-party scripts); amounts as BigInt minor units (alternatives:     │
+     │ decimal.js, Number — rejected for float error); USD total =             │
+     │ available+pending+claiming. TODO markers: balance-after-claim, unknown  │
+     │ claim outcome.                                                          │
+     │                                                                         │
+     │ 4. README.md — rewrite to brief's three items: Live link (placeholder   │
+     │ until first deploy), run locally (npm install, npm run web, paste token │
+     │ on first open; npm run deploy), What works (honest: scaffold only so    │
+     │ far). Drop proxy/.env text and Decisions/Assumptions sections (those    │
+     │ live in NOTES.md now).                                                  │
+     │                                                                         │
+     │ 5. Leave deletes of proxy + .env.example as user made them; commit      │
+     │ after npm run check only if user asks.                                  │
+     │                                                                         │
+     │ Docs summary (to deliver in chat after edits)                           │
+     │                                                                         │
+     │ - Auth: Authorization: Bearer <token>. Base                             │
+     │   https://task-api.cashmine.io, /v1 prefix.                             │
+     │ - Endpoints: GET /v1/balances → {asOf, items[{asset, decimals,          │
+     │   available, pending, claiming, usdPrice}]}, snapshot recomputed every  │
+     │   15 s. GET /v1/activity?limit(1–20)&cursor → {items[{id,type,asset,amo │
+     │   unt(signed),status,exchange|null,createdAt,relatedId|null}],          │
+     │   nextCursor|null}. GET /v1/claim-options?asset= →                      │
+     │   {asset,minAmount,fee,destinations[{id,label}]}. POST /v1/claims       │
+     │   (header Idempotency-Key 1–100 chars; body                             │
+     │   {asset,amount,destinationId}) → 201 claim / 200 replay. GET           │
+     │   /v1/claims/{id} → claim {id,asset,amount,fee,receiveAmount,destinatio │
+     │   nId,status,failureReason,createdAt,updatedAt}.                        │
+     │ - Amounts: decimal strings, never numbers; regex                        │
+     │   ^(0|[1-9]\d*)(\.\d+)?$; ≤ decimals places. Invalid: .5, 1., 05, 1e-3. │
+     │ - Claim rules: minAmount ≤ amount ≤ available (available checked live,  │
+     │   not snapshot); ≤ decimals places; receive = amount − fee; min/fee per │
+     │   asset from claim-options (not fixed).                                 │
+     │ - Statuses: claim pending → completed | failed (~20 s); failed returns  │
+     │   amount to available with failureReason. Submitted amount leaves       │
+     │   available at once → claiming; snapshot may lag up to 15 s.            │
+     │ - Idempotency: same key+body → original claim, 200,                     │
+     │   Idempotent-Replayed: true; same key, different body → 409             │
+     │   IDEMPOTENCY_MISMATCH.                                                 │
+     │ - Errors: {error:{code,message,field?}}; 400 VALIDATION, 401            │
+     │   UNAUTHORIZED, 404 NOT_FOUND, 409 IDEMPOTENCY_MISMATCH, 429            │
+     │   RATE_LIMITED (retryAfterMs / Retry-After s), 500/503 SERVER, 504      │
+     │   TIMEOUT (outcome unknown).                                            │
+     │ - Gaps (→ Assumptions): fee ≥ amount not addressed (client will also    │
+     │   require amount > fee); no list-claims endpoint (track own claim ids   │
+     │   locally / via activity relatedId); fee/min decimals vs asset decimals │
+     │   unspecified; numeric rate limits unstated; "Max" uses snapshot        │
+     │   available, server may reject if stale.                                │
+     │                                                                         │
+     │ Domain rules (AGENTS.md text)                                           │
+     │                                                                         │
+     │ - Amounts are strings at API boundary; in app parse to BigInt minor     │
+     │   units using asset decimals; never Number/parseFloat for money (USD    │
+     │   display only).                                                        │
+     │ - Input valid iff matches ^(0|[1-9]\d*)(\.\d+)?$, ≤ decimals places, ≥  │
+     │   minAmount, ≤ available, > fee.                                        │
+     │ - receive = amount − fee; show both before confirm.                     │
+     │   Min/fee/destinations always from /v1/claim-options, never hardcoded.  │
+     │ - Every claim submit carries Idempotency-Key; generate once per         │
+     │   confirmed intent, reuse on retry of same body; new key only for new   │
+     │   intent.                                                               │
+     │ - 504 / network error / timeout on POST = outcome unknown: never        │
+     │   auto-new-key; retry same key or poll.                                 │
+     │ - Poll GET /v1/claims/{id} until completed|failed; show failureReason.  │
+     │ - Balances are 15 s snapshots; show asOf.                               │
+     │ - 429: wait retryAfterMs before retry.                                  │
+     │                                                                         │
+     │ Verification                                                            │
+     │                                                                         │
+     │ - npm run check passes.                                                 │
+     │ - curl -H "Authorization: Bearer $T"                                    │
+     │   https://task-api.cashmine.io/v1/balances (token pasted by user in     │
+     │   shell, not saved) to confirm schema matches docs.                     │
+     │ - grep repo for token string → none.                                    │
+     ╰─────────────────────────────────────────────────────────────────────────╯
+
+⏺ Updated plan
+  ⎿  /plan to preview
+
+⏺ Updated plan
+  ⎿  /plan to preview
+
+⏺ Updated plan
+  ⎿  /plan to preview
+
+⏺ Updated plan
+  ⎿  /plan to preview
+
+⏺ User approved Claude's plan
+  ⎿  Plan saved to: ~/.claude/plans/brief-for-this-task-memoized-pumpkin.md · 
+     /plan to edit
+     Plan: scaffold changes + API rules (no UI)
+
+     Context
+
+     CashMine take-home (BRIEF.md): Expo web app showing payback balances +
+     claim flow. Token must be entered by user, kept in browser, never in
+     code/repo/build. API base URL in one place. User removed server proxy +
+     .env.example (unstaged deletes) and trimmed AGENTS.md. Docs
+     (https://task-api.cashmine.io/docs, read raw) confirm CORS open to any 
+     origin (access-control-allow-headers: Authorization, Content-Type, 
+     Idempotency-Key, exposes Retry-After, Idempotent-Replayed) → client calls
+     API directly.
+
+     Time warning: submission deadline 2026-10-22 10:00 UTC; now ~08:30 UTC.
+     Commit every 30 min.
+
+     User decisions: amounts = BigInt minor units; USD total =
+     available+pending+claiming; NOTES.md = skeleton + settled items only.
+
+     Changes
+
+     1. src/api/client.ts (new)
+
+     - export const API_BASE_URL = 'https://task-api.cashmine.io/v1'; — only
+       place.
+     - Token: TOKEN_KEY = 'cashmine.token'; getToken()/setToken()/clearToken()
+       wrapping localStorage in try/catch and typeof window guard (web.output is
+       static → prerender has no window).
+     - api<T>(path, schema: z.ZodType<T>, init?: { method?, body?, headers?, 
+       signal?, timeoutMs? }):
+       - headers Authorization: Bearer <token>, Accept/Content-Type: 
+         application/json, body JSON-stringified.
+       - Timeout via AbortController (default 15 s).
+       - Non-2xx → parse { error: { code, message, field?, retryAfterMs? } }
+         with zod → throw ApiError { status, code, message, field?, 
+         retryAfterMs? }; retryAfterMs falls back to Retry-After header ×1000.
+       - Network failure / abort → ApiError code NETWORK (or TIMEOUT on abort)
+         with outcomeUnknown: true; 500/503/504 also outcomeUnknown: true. 4xx
+         with a code = definite (outcomeUnknown: false).
+       - 2xx → schema.parse(json) (zod v4), returns T. (Idempotent-Replayed not
+         surfaced yet; add if claim UI needs it.)
+       - Missing token → throw ApiError code UNAUTHORIZED without fetching.
+     - No endpoint schemas/hooks yet (UI phase). import { z } from 'zod'.
+
+     2. AGENTS.md
+
+     - Top section add: "API token is entered by the user, stored in
+       localStorage, never in code."
+     - Replace CORS bullet (contradicts current setup) with: "Task API has open
+       CORS; client calls it directly via api() in src/api/client.ts; base URL
+       constant lives only there. Do not write another client."
+     - Fill ## Domain rules (see rules below, condensed).
+
+     3. NOTES.md (new) — headings Decisions / Working with AI / Not done.
+
+     Decisions now: direct calls (open CORS, no proxy needed, nothing secret
+     server-side); token in localStorage per brief (XSS exposure accepted, no
+     3rd-party scripts); amounts as BigInt minor units (alternatives:
+     decimal.js, Number — rejected for float error); USD total =
+     available+pending+claiming. TODO markers: balance-after-claim, unknown
+     claim outcome.
+
+     4. README.md — rewrite to brief's three items: Live link (placeholder until
+     first deploy), run locally (npm install, npm run web, paste token on first
+     open; npm run deploy), What works (honest: scaffold only so far). Drop 
+     proxy/.env text and Decisions/Assumptions sections (those live in NOTES.md 
+     now).
+
+     5. Check + commit
+
+     npm run check (fix issues), then one commit with everything: user's deletes
+     (proxy, .env.example), BRIEF.md, AGENTS.md, app.json, new client.ts,
+     NOTES.md, README.md. Grep staged diff for token first.
+
+     Next (after this plan, separate step)
+
+     Token screen + Home (balances), then first npm run deploy.
+
+     Docs summary (to deliver in chat after edits)
+
+     - Auth: Authorization: Bearer <token>. Base https://task-api.cashmine.io,
+       /v1 prefix.
+     - Endpoints: GET /v1/balances → {asOf, items[{asset, decimals, available, 
+       pending, claiming, usdPrice}]}, snapshot recomputed every 15 s. GET 
+       /v1/activity?limit(1–20)&cursor → {items[{id,type,asset,amount(signed),st
+       atus,exchange|null,createdAt,relatedId|null}], nextCursor|null}. GET 
+       /v1/claim-options?asset= →
+       {asset,minAmount,fee,destinations[{id,label}]}. POST /v1/claims (header
+       Idempotency-Key 1–100 chars; body {asset,amount,destinationId}) → 201
+       claim / 200 replay. GET /v1/claims/{id} → claim {id,asset,amount,fee,rece
+       iveAmount,destinationId,status,failureReason,createdAt,updatedAt}.
+     - Amounts: decimal strings, never numbers; regex ^(0|[1-9]\d*)(\.\d+)?$; ≤
+       decimals places. Invalid: .5, 1., 05, 1e-3.
+     - Claim rules: minAmount ≤ amount ≤ available (available checked live, not
+       snapshot); ≤ decimals places; receive = amount − fee; min/fee per asset
+       from claim-options (not fixed).
+     - Statuses: claim pending → completed | failed (~20 s); failed returns
+       amount to available with failureReason. Submitted amount leaves available
+       at once → claiming; snapshot may lag up to 15 s.
+     - Idempotency: same key+body → original claim, 200, Idempotent-Replayed: 
+       true; same key, different body → 409 IDEMPOTENCY_MISMATCH.
+     - Errors: {error:{code,message,field?}}; 400 VALIDATION, 401 UNAUTHORIZED,
+       404 NOT_FOUND, 409 IDEMPOTENCY_MISMATCH, 429 RATE_LIMITED (retryAfterMs /
+       Retry-After s), 500/503 SERVER, 504 TIMEOUT (outcome unknown).
+     - Gaps (→ Assumptions): fee ≥ amount not addressed (client will also
+       require amount > fee); no list-claims endpoint (track own claim ids
+       locally / via activity relatedId); fee/min decimals vs asset decimals
+       unspecified; numeric rate limits unstated; "Max" uses snapshot available,
+       server may reject if stale.
+
+     Domain rules (AGENTS.md text)
+
+     - Amounts are strings at API boundary; in app parse to BigInt minor units
+       using asset decimals; never Number/parseFloat for money.
+     - Input valid iff matches ^(0|[1-9]\d*)(\.\d+)?$, ≤ decimals places, ≥
+       minAmount, ≤ available, > fee.
+     - receive = amount − fee; show both before confirm. Min/fee/destinations
+       always from /v1/claim-options, never hardcoded.
+     - Every claim submit carries Idempotency-Key; generate once per confirmed
+       intent, reuse on retry of same body; new key only for new intent.
+     - Pending intent {key, asset, amount, destinationId} persisted in
+       localStorage before POST, until claim id known. After reload with a
+       pending unknown intent: offer "Check status / Retry" with the SAME key,
+       never a new one.
+     - POST outcome unknown = network error, abort/timeout, 500, 503, 504 →
+       same-key retry is safe (idempotent). 4xx with definite code (VALIDATION,
+       409 IDEMPOTENCY_MISMATCH, …) = definite: show message, keep form.
+     - USD total in BigInt too: amount minor units × usdPrice parsed to
+       fixed-point BigInt; round once at end for display. No parseFloat/Number
+       on money, USD included.
+     - Poll GET /v1/claims/{id} until completed|failed; show failureReason.
+     - Balances are 15 s snapshots; show asOf.
+     - 429: wait retryAfterMs before retry.
+
+     Verification
+
+     - npm run check passes.
+     - curl -H "Authorization: Bearer $T" 
+       https://task-api.cashmine.io/v1/balances (token pasted by user in shell,
+       not saved) to confirm schema matches docs.
+     - grep repo for token string → none.
+
+⏺ Write files now.
+
+⏺ Write(src/api/client.ts)
+  ⎿  Wrote 141 lines to src/api/client.ts
+       1 import { z } from 'zod';
+       2 
+       3 // The only place the API base URL lives.
+       4 export const API_BASE_URL = 'https://task-api.cashmine.io/v1';
+       5 
+       7 const DEFAULT_TIMEOUT_MS = 15_000;
+       8 
+       9 // localStorage can be missing (static prerender) or throw (priv
+         ate mode, blocked storage).
+      10 export function getToken(): string | null {
+     … +138 lines (ctrl+o to expand)
+
+⏺ Update(AGENTS.md)
+  ⎿  Added 1 line
+      2  
+      3  Read the versioned docs at https://docs.expo.dev/versions/v58.0.
+         0/ before writing code.
+      4  Deliverable is a phone-sized web app deployed to EAS Hosting; na
+         tive iOS/Android not required.
+      5 +API token is entered by the user, stored in localStorage, never 
+        +in code.                                                        
+      6  Server state goes through TanStack Query; validate every API res
+         ponse with zod (v4 API) at the boundary.
+      7  Run `npm run check` before every commit.
+      8  
+
+⏺ Update(AGENTS.md)
+  ⎿  Added 2 lines, removed 1 line
+      12  `Alert.alert` (render errors inline, confirm via `Modal`), `Ref
+          reshControl` pull gesture (add a refresh button),
+      13  `KeyboardAvoidingView`, `expo-haptics`, `expo-secure-store`.
+      14  
+      15 -- CORS applies: call external APIs only through API routes, nev
+         -er directly from the client.                                   
+      15 +- Task API has open CORS: the client calls it directly via `api
+         +(path, zodSchema)` in `src/api/client.ts`;                     
+      16 +  the base URL constant lives only there. Do not write another 
+         +client.                                                        
+      17  - API routes run on Cloudflare Workers (EAS Hosting), not Node:
+           no `fs`, no Node-only packages.
+      18  - `TextInput` fontSize >= 16 (smaller makes iOS Safari zoom on 
+          focus).
+      19  - Root container `flex: 1` and `maxWidth: 480` centered; give `
+          FlatList` a bounded height.
+⏺ Update(AGENTS.md)
+  ⎿  Added 25 lines, removed 1 line
+      22  
+      23  ## Domain rules
+      24  
+      25 -<!-- filled in after reading the brief -->                     
+      25 +API docs: https://task-api.cashmine.io/docs. Money is real for 
+         +users: correctness over polish.                                
+      26 +                                                               
+      27 +Amounts                                                        
+      28 +- Amounts are decimal strings at the API boundary, never JSON n
+         +umbers. In the app parse to BigInt minor                       
+      29 +  units using the asset's `decimals`. Never `Number`/`parseFloa
+         +t` on money, USD included.                                     
+      30 +- Valid amount string: `^(0|[1-9]\d*)(\.\d+)?$` and at most `de
+         +cimals` places (`.5`, `1.`, `05`, `1e-3` invalid).             
+      31 +- USD total = sum of (available + pending + claiming) × `usdPri
+         +ce`, computed as fixed-point BigInt;                           
+      32 +  round once at the end for display.                           
+      33 +- Balances are snapshots recomputed every 15 s; always show `as
+         +Of`. A new claim may lag one snapshot.                         
+      34 +                                                               
+      35 +Claims                                                         
+      36 +- `minAmount`, `fee`, destinations always come from `GET /v1/cl
+         +aim-options?asset=`, never hardcoded.                          
+      37 +- Valid claim: `minAmount <= amount <= available`, at most `dec
+         +imals` places, and `amount > fee`.                             
+      38 +  `available` is checked live server-side, so Max (snapshot) ca
+         +n still be rejected.                                           
+      39 +- receive = amount − fee; show amount, fee and receive before c
+         +onfirm.                                                        
+      40 +- Status `pending` → `completed | failed` (~20 s). Poll `GET /v
+         +1/claims/{id}` until final; show `failureReason`.              
+      41 +  On failure the amount returns to `available`.                
+      42 +                                                               
+      43 +Idempotency and errors                                         
+      44 +- Every `POST /v1/claims` carries `Idempotency-Key` (UUID). One
+         + key per confirmed intent; new key only for a new intent.      
+      45 +- Persist the pending intent `{ key, asset, amount, destination
+         +Id }` in localStorage before POST, until the claim id          
+      46 +  is known. After reload with a pending unknown intent, offer "
+         +Check status / Retry" with the SAME key, never a new one.      
+      47 +- Outcome unknown = network error, abort/timeout, 500, 503, 504
+         + (`ApiError.outcomeUnknown`): same-key retry is safe.          
+      48 +- 4xx with a code (VALIDATION, 409 IDEMPOTENCY_MISMATCH, ...) i
+         +s definite: show the message inline, keep the form.            
+      49 +- 401: send the user to the token screen. 429: wait `retryAfter
+         +Ms` before retrying.                                           
+
+⏺ Write(NOTES.md)
+  ⎿  Wrote 25 lines to NOTES.md
+       1 # Notes
+       3 ## Decisions
+       4 
+          the token belongs to the user, so there is
+         y and `.env` were removed; the app is a static web build.
+       7 - **Token in localStorage.** Required by the brief (entered on f
+       8   script on the page (XSS); acceptable here because the app load
+         s no third-party scripts.
+         rsed into `bigint` scaled by the asset's `decimals`;
+         ernatives: `Number` (rejected: float error on money
+     … +27 lines (ctrl+o to expand)
+
+⏺ Write(README.md)
+  ⎿  Added 9 lines, removed 20 lines
+       1 -# <App name>                                                   
+       1 +# CashMine payback                                             
+       2  
+       3 -Live: <url> · Brief received <HH:MM UTC>, submitted <HH:MM UTC>
+       3 +Phone-sized web app (Expo, React Native Web) to view payback ba
+         +lances and claim them.                                         
+       4  
+       5 -<One sentence: what the app does.>                             
+       5 +Live: TBD (first deploy pending)                               
+       6  
+       7  ## Run locally
+       8  
+       9  ```
+      10  npm install
+      11 -cp .env.example .env.local   # fill API_BASE_URL and API_TOKEN 
+      11  npm run web
+      12  ```
+      13  
+      15 -Deploy: `npm run deploy` (EAS Hosting).                        
+      14 +Open the printed URL and paste your API token on first open. Th
+         +e token is stored in the browser only.                         
+      15  
+      17 -## Stack                                                       
+      16 +Deploy: `npm run deploy` (EAS Hosting). Checks: `npm run check`
+         +.                                                              
+      17  
+      19 -Expo SDK, Expo Router (web output: server), TypeScript, TanStac
+         -k Query, zod.                                                  
+      18 +## What works                                                  
+      19  
+      21 -## Architecture                                                
+      20 +- Typed API client (`src/api/client.ts`) with zod validation, t
+         +imeouts and typed errors.                                      
+      21 +- UI: not built yet.                                           
+      22  
+      23 -- `src/app/api/[...path]+api.ts`: server-side proxy, keeps the 
+         -API token out of the client bundle.                            
+      24 -- `src/api/`: typed client and one hook per endpoint; responses
+         - validated with zod.                                           
+      25 -                                                               
+      26 -## Decisions                                                   
+      27 -                                                               
+      28 -## Assumptions                                                 
+      29 -                                                               
+      30 -## Not done / next steps                                       
+      31 -                                                               
+      32 -## AI usage                                                    
+      33 -                                                               
+      34 -Built with Claude Code; full sessions in `ai-logs/`. Project se
+         -tup (lint, format, proxy, typed client) came from my starter sc
+         -ript and is the first commit.                                  
+      23 +Decisions, AI usage and known issues: see [NOTES.md](NOTES.md).
+
+⏺ Bash(npx prettier --write src/api/client.ts AGENTS.md NOTES.md README.md
+      >/dev/null && npm run check 2>&1 | tail -20)
+  ⎿  > cashmine@1.0.0 check
+     > tsc --noEmit && expo lint && prettier --check .
+     … +4 lines (ctrl+o to expand)
+  ⎿  Updated AGENTS.md (+3 -0)
+      25  API docs: https://task-api.cashmine.io/docs. Money is real for 
+          users: correctness over polish.
+      26  
+      27  Amounts
+      28 +                                                               
+      29  - Amounts are decimal strings at the API boundary, never JSON n
+          umbers. In the app parse to BigInt minor
+      30    units using the asset's `decimals`. Never `Number`/`parseFloa
+          t` on money, USD included.
+      31  - Valid amount string: `^(0|[1-9]\d*)(\.\d+)?$` and at most `de
+          cimals` places (`.5`, `1.`, `05`, `1e-3` invalid).
+     ...
+      34  - Balances are snapshots recomputed every 15 s; always show `as
+          Of`. A new claim may lag one snapshot.
+      35  
+      36  Claims
+      37 +                                                               
+      38  - `minAmount`, `fee`, destinations always come from `GET /v1/cl
+          aim-options?asset=`, never hardcoded.
+      39  - Valid claim: `minAmount <= amount <= available`, at most `dec
+          imals` places, and `amount > fee`.
+      40    `available` is checked live server-side, so Max (snapshot) ca
+          n still be rejected.
+     ...
+      43    On failure the amount returns to `available`.
+      44  
+      45  Idempotency and errors
+      46 +                                                               
+      47  - Every `POST /v1/claims` carries `Idempotency-Key` (UUID). One
+           key per confirmed intent; new key only for a new intent.
+      48  - Persist the pending intent `{ key, asset, amount, destination
+          Id }` in localStorage before POST, until the claim id
+      49    is known. After reload with a pending unknown intent, offer "
+          Check status / Retry" with the SAME key, never a new one.
+
+❯ Real /v1/balances response (fake data from my token):                         
+  {"asOf":"2026-10-22T08:40:12.276Z","items":[{"asset":"USDT","decimals":6,"ava 
+  ilable":"820.413207","pending":"50.12","claiming":"0","usdPrice":"1.0002"},{" 
+  asset":"BTC","decimals":8,"available":"0.01234567","pending":"0.00012","claim 
+  ing":"0","usdPrice":"67312.45"},{"asset":"ETH","decimals":18,"available":"12. 
+  345678901234591676","pending":"0.02","claiming":"0","usdPrice":"2461.08"}]}   
+                                                                                
+  Notes: amounts can have fewer digits than decimals ("50.12" with 6); ETH has  
+  18 decimals, beyond Number precision; usdPrice has varying decimals.          
+  Next: src/lib/amount.ts (parse/format/USD value, pure functions, BigInt), zod 
+  schema for balances, token screen, Home with per-asset rows (available,       
+  pending, claiming), USD total, asOf freshness, loading/error/retry/refresh    
+  button. Then npm run check, commit, npm run deploy.                           
+
+⏺ Check fails only on BRIEF.md formatting. Add it to .prettierignore (keep brief
+  verbatim), then commit.
+
+⏺ Bash(cat .prettierignore && echo "BRIEF.md" >> .prettierignore && sed -i ''
+      's/- Verify: `curl` the API routes,/- Verify: `curl` the API,/' AGENTS.md
+      && npm run chec…)
+  ⎿  node_modules
+     ios
+     android
+     … +15 lines (ctrl+o to expand)
+  ⎿  Updated .prettierignore (+1 -0)
+      3  android
+      4  .expo
+      5  dist
+      6 +BRIEF.md                                                        
+  ⎿  Updated AGENTS.md (+1 -1)
+      18  - `TextInput` fontSize >= 16 (smaller makes iOS Safari zoom on 
+          focus).
+      19  - Root container `flex: 1` and `maxWidth: 480` centered; give `
+          FlatList` a bounded height.
+      20  - Shadows via `boxShadow`, not `shadow*` props.
+      21 -- Verify: `curl` the API routes, and check the browser console 
+         -for errors after each feature.                                 
+      21 +- Verify: `curl` the API, and check the browser console for err
+         +ors after each feature.                                        
+      22  
+      23  ## Domain rules
+      24  
+
+⏺ No token in diff. Commit.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ Committed cb35755. Next: amount lib, balances schema, token gate, Home.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ Write(src/lib/amount.ts)
+  ⎿  Wrote 58 lines to src/lib/amount.ts
+       1 // Money math on BigInt minor units. Never use Number/parseFloat
+          on amounts.
+       3 // Digits, optional dot plus digits, no leading zeros: "0.5", "1
+         2" ok; ".5", "1.", "05", "1e-3" not.
+       4 export const AMOUNT_RE = /^(0|[1-9]\d*)(\.\d+)?$/;
+       6 // A decimal string as an exact fraction: value = units / 10^sca
+         le.
+       7 export type Decimal = { units: bigint; scale: number };
+       9 export function parseDecimal(input: string): Decimal | null {
+      10   if (!AMOUNT_RE.test(input)) return null;
+     … +64 lines (ctrl+o to expand)
+
+⏺ Write(src/api/balances.ts)
+  ⎿  Wrote 73 lines to src/api/balances.ts
+       1 import { useQuery } from '@tanstack/react-query';
+       2 import { z } from 'zod';
+       3 
+       4 import { AMOUNT_RE, parseAmount, parseDecimal, usdValue, type De
+         cimal } from '@/lib/amount';
+       6 import { api, ApiError } from './client';
+       7 
+       8 const amountString = z.string().regex(AMOUNT_RE);
+       9 
+      10 const balanceItemSchema = z
+     … +69 lines (ctrl+o to expand)
+
+⏺ Write(src/auth/token-context.tsx)
+  ⎿  Wrote 45 lines to src/auth/token-context.tsx
+       1 import { useQueryClient } from '@tanstack/react-query';
+       2 import { createContext, useCallback, useContext, useEffect, useS
+         tate, type ReactNode } from 'react';
+       4 import { clearToken, getToken, setToken } from '@/api/client';
+       5 
+       6 type TokenState = {
+       7   // undefined until read from localStorage after mount (static 
+       8   token: string | null | undefined;
+       9   save: (token: string) => void;
+      10   clear: () => void;
+     … +41 lines (ctrl+o to expand)
+
+  Read 1 file (ctrl+o to expand)
+
+⏺ Alias fine. Now token screen, Home, layout.
+
+⏺ Write(src/components/token-screen.tsx)
+  ⎿  Wrote 64 lines to src/components/token-screen.tsx
+       1 import { useState } from 'react';
+       2 import { Pressable, StyleSheet, Text, TextInput, View } from 're
+         act-native';
+       3 
+       4 import { useToken } from '@/auth/token-context';
+       6 
+       7 export function TokenScreen() {
+       8   const { save } = useToken();
+       9   const [value, setValue] = useState('');
+      10   const trimmed = value.trim();
+     … +58 lines (ctrl+o to expand)
+
+⏺ Write(src/theme.ts)
+  ⎿  Wrote 13 lines to src/theme.ts
+       1 export const colors = {
+       2   background: '#F4F5F7',
+       3   surface: '#FFFFFF',
+       4   text: '#111418',
+       5   muted: '#5F6670',
+       6   border: '#D9DDE3',
+       7   primary: '#1F6FEB',
+       8   onPrimary: '#FFFFFF',
+       9   danger: '#C62828',
+      10   dangerBg: '#FDECEC',
+     … +3 lines (ctrl+o to expand)
+
+⏺ Write(src/app/_layout.tsx)
+  ⎿  Added 25 lines, removed 1 line
+       1  import { QueryClient, QueryClientProvider } from '@tanstack/rea
+          ct-query';
+       2  import { Stack } from 'expo-router';
+       3  import { useState } from 'react';
+       4 +import { ActivityIndicator, StyleSheet, View } from 'react-nati
+         +ve';                                                           
+       5  
+       6 +import { TokenProvider, useToken } from '@/auth/token-context';
+       7 +import { TokenScreen } from '@/components/token-screen';       
+       8 +import { colors } from '@/theme';                              
+       9 +                                                               
+      10 +function TokenGate() {                                         
+      11 +  const { token } = useToken();                                
+      12 +  if (token === undefined) return <ActivityIndicator style={sty
+         +les.loading} />;                                               
+      13 +  if (token === null) return <TokenScreen />;                  
+      14 +  return <Stack screenOptions={{ contentStyle: { backgroundColo
+         +r: colors.background } }} />;                                  
+      15 +}                                                              
+      16 +                                                               
+      17  export default function RootLayout() {
+      18    const [queryClient] = useState(() => new QueryClient());
+      19  
+      20    return (
+      21      <QueryClientProvider client={queryClient}>
+      10 -      <Stack />                                                
+      22 +      <TokenProvider>                                          
+      23 +        <View style={styles.page}>                             
+      24 +          <View style={styles.root}>                           
+      25 +            <TokenGate />                                      
+      26 +          </View>                                              
+      27 +        </View>                                                
+      28 +      </TokenProvider>                                         
+      29      </QueryClientProvider>
+      30    );
+      31  }
+      32 +                                                               
+      33 +const styles = StyleSheet.create({                             
+      34 +  page: { flex: 1, backgroundColor: colors.background },       
+      35 +  root: { flex: 1, width: '100%', maxWidth: 480, alignSelf: 'ce
+         +nter' },                                                       
+      36 +  loading: { flex: 1 },                                        
+      37 +});                                                            
+
+⏺ Write(src/app/index.tsx)
+  ⎿  Added 219 lines, removed 7 lines
+        1 -import { Text, View, StyleSheet } from 'react-native';        
+        1 +import { Stack } from 'expo-router';                          
+        2 +import { useEffect, useState } from 'react';                  
+        3 +import { ActivityIndicator, Pressable, ScrollView, StyleSheet,
+          + Text, View } from 'react-native';                            
+        4  
+        3 -export default function Index() {                             
+        5 +import { useBalances, type Balance } from '@/api/balances';   
+        6 +import { ApiError } from '@/api/client';                      
+        7 +import { useToken } from '@/auth/token-context';              
+        8 +import { formatAmount, formatUsd, toCents } from '@/lib/amount
+          +';                                                            
+        9 +import { colors } from '@/theme';                             
+       10 +                                                              
+       11 +// Snapshots refresh every 15 s; older than this means our ref
+          +reshes are failing.                                           
+       12 +const STALE_AFTER_MS = 60_000;                                
+       13 +                                                              
+       14 +function useNow(intervalMs: number) {                         
+       15 +  const [now, setNow] = useState(() => Date.now());           
+       16 +  useEffect(() => {                                           
+       17 +    const id = setInterval(() => setNow(Date.now()), intervalM
+          +s);                                                           
+       18 +    return () => clearInterval(id);                           
+       19 +  }, [intervalMs]);                                           
+       20 +  return now;                                                 
+       21 +}                                                             
+       22 +                                                              
+       23 +function formatAge(ms: number) {                              
+       24 +  const s = Math.max(0, Math.round(ms / 1000));               
+       25 +  if (s < 60) return `${s}s ago`;                             
+       26 +  const m = Math.floor(s / 60);                               
+       27 +  if (m < 60) return `${m} min ago`;                          
+       28 +  return `${Math.floor(m / 60)} h ago`;                       
+       29 +}                                                             
+       30 +                                                              
+       31 +function errorMessage(error: unknown) {                       
+       32 +  if (error instanceof ApiError) {                            
+       33 +    if (error.code === 'UNAUTHORIZED') return 'Your token is i
+          +nvalid or expired.';                                          
+       34 +    if (error.code === 'RATE_LIMITED') return 'Too many reques
+          +ts. Try again in a moment.';                                  
+       35 +    if (error.code === 'TIMEOUT' || error.code === 'NETWORK') 
+       36 +      return 'Could not reach the server. Check your connectio
+          +n.';                                                          
+       37 +    return `Server error (${error.code}). Try again.`;        
+       38 +  }                                                           
+       39 +  return 'Unexpected response from the server.';              
+       40 +}                                                             
+       41 +                                                              
+       42 +function isUnauthorized(error: unknown) {                     
+       43 +  return error instanceof ApiError && error.code === 'UNAUTHOR
+          +IZED';                                                        
+       44 +}                                                             
+       45 +                                                              
+       46 +export default function Home() {                              
+       47 +  const { clear } = useToken();                               
+       48 +  const { data, error, isPending, isFetching, refetch } = useB
+          +alances();                                                    
+       49 +  const now = useNow(5000);                                   
+       50 +                                                              
+       51    return (
+        5 -    <View style={styles.container}>                           
+        6 -      <Text>Edit src/app/index.tsx to edit this screen.</Text>
+       52 +    <>                                                        
+       53 +      <Stack.Screen options={{ title: 'Payback' }} />         
+       54 +      <ScrollView contentContainerStyle={styles.content}>     
+       55 +        {isPending ? (                                        
+       56 +          <View style={styles.center}>                        
+       57 +            <ActivityIndicator />                             
+       58 +            <Text style={styles.muted}>Loading balances…</Text
+          +>                                                             
+       59 +          </View>                                             
+       60 +        ) : !data ? (                                         
+       61 +          <ErrorBox error={error} onRetry={() => refetch()} on
+          +ChangeToken={clear} />                                        
+       62 +        ) : (                                                 
+       63 +          <>                                                  
+       64 +            <View style={styles.totalCard}>                   
+       65 +              <Text style={styles.muted}>Total payback</Text> 
+       66 +              <Text style={styles.total}>{formatUsd(toCents(da
+          +ta.usdTotal))}</Text>                                         
+       67 +              <Text style={styles.muted}>Available, pending an
+          +d claiming, in USD</Text>                                     
+       68 +              <View style={styles.freshRow}>                  
+       69 +                <Text                                         
+       70 +                  style={[                                    
+       71 +                    styles.fresh,                             
+       72 +                    now - Date.parse(data.asOf) > STALE_AFTER_
+          +MS && styles.staleText,                                       
+       73 +                  ]}                                          
+       74 +                >                                             
+       75 +                  Updated {formatAge(now - Date.parse(data.asO
+          +f))}                                                          
+       76 +                </Text>                                       
+       77 +                <Pressable                                    
+       78 +                  onPress={() => refetch()}                   
+       79 +                  disabled={isFetching}                       
+       80 +                  style={[styles.refresh, isFetching && styles
+          +.disabled]}                                                   
+       81 +                  accessibilityRole="button"                  
+       82 +                >                                             
+       83 +                  <Text style={styles.refreshText}>{isFetching
+          + ? 'Refreshing…' : 'Refresh'}</Text>                          
+       84 +                </Pressable>                                  
+       85 +              </View>                                         
+       86 +            </View>                                           
+       87 +                                                              
+       88 +            {error && (                                       
+       89 +              <View style={styles.warningBox}>                
+       90 +                <Text style={styles.warningText}>             
+       91 +                  {errorMessage(error)} Showing the last balan
+          +ces we loaded.                                                
+       92 +                </Text>                                       
+       93 +                {isUnauthorized(error) && (                   
+       94 +                  <Pressable onPress={clear} accessibilityRole
+          +="button">                                                    
+       95 +                    <Text style={styles.link}>Change token</Te
+          +xt>                                                           
+       96 +                  </Pressable>                                
+       97 +                )}                                            
+       98 +              </View>                                         
+       99 +            )}                                                
+      100 +                                                              
+      101 +            {data.items.length === 0 ? (                      
+      102 +              <Text style={styles.muted}>No balances yet.</Tex
+          +t>                                                            
+      103 +            ) : (                                             
+      104 +              data.items.map((item) => <BalanceRow key={item.a
+          +sset} item={item} />)                                         
+      105 +            )}                                                
+      106 +          </>                                                 
+      107 +        )}                                                    
+      108 +                                                              
+      109 +        <Pressable onPress={clear} style={styles.changeToken} 
+          +accessibilityRole="button">                                   
+      110 +          <Text style={styles.link}>Change token</Text>       
+      111 +        </Pressable>                                          
+      112 +      </ScrollView>                                           
+      113 +    </>                                                       
+      114 +  );                                                          
+      115 +}                                                             
+      116 +                                                              
+      117 +function BalanceRow({ item }: { item: Balance }) {            
+      118 +  return (                                                    
+      119 +    <View style={styles.card}>                                
+      120 +      <View style={styles.rowHeader}>                         
+      121 +        <Text style={styles.asset}>{item.asset}</Text>        
+      122 +        <Text style={styles.usd}>{formatUsd(toCents(item.usdTo
+          +tal))}</Text>                                                 
+      123 +      </View>                                                 
+      124 +      <Line label="Available" value={formatAmount(item.availab
+          +le, item.decimals)} strong />                                 
+      125 +      <Line label="Pending" value={formatAmount(item.pending, 
+          +item.decimals)} />                                            
+      126 +      <Line label="Claiming" value={formatAmount(item.claiming
+          +, item.decimals)} />                                          
+      127      </View>
+      128    );
+      129  }
+      130  
+      131 +function Line({ label, value, strong }: { label: string; value
+          +: string; strong?: boolean }) {                               
+      132 +  return (                                                    
+      133 +    <View style={styles.line}>                                
+      134 +      <Text style={styles.lineLabel}>{label}</Text>           
+      135 +      <Text style={[styles.lineValue, strong && styles.lineStr
+          +ong]} selectable>                                             
+      136 +        {value}                                               
+      137 +      </Text>                                                 
+      138 +    </View>                                                   
+      139 +  );                                                          
+      140 +}                                                             
+      141 +                                                              
+      142 +function ErrorBox({                                           
+      143 +  error,                                                      
+      144 +  onRetry,                                                    
+      145 +  onChangeToken,                                              
+      146 +}: {                                                          
+      147 +  error: unknown;                                             
+      148 +  onRetry: () => void;                                        
+      149 +  onChangeToken: () => void;                                  
+      150 +}) {                                                          
+      151 +  return (                                                    
+      152 +    <View style={styles.errorBox}>                            
+      153 +      <Text style={styles.errorText}>{errorMessage(error)}</Te
+          +xt>                                                           
+      154 +      {isUnauthorized(error) ? (                              
+      155 +        <Pressable style={styles.button} onPress={onChangeToke
+          +n} accessibilityRole="button">                                
+      156 +          <Text style={styles.buttonText}>Change token</Text> 
+      157 +        </Pressable>                                          
+      158 +      ) : (                                                   
+      159 +        <Pressable style={styles.button} onPress={onRetry} acc
+          +essibilityRole="button">                                      
+      160 +          <Text style={styles.buttonText}>Retry</Text>        
+      161 +        </Pressable>                                          
+      162 +      )}                                                      
+      163 +    </View>                                                   
+      164 +  );                                                          
+      165 +}                                                             
+      166 +                                                              
+      167  const styles = StyleSheet.create({
+       12 -  container: {                                                
+       13 -    flex: 1,                                                  
+      168 +  content: { padding: 16, gap: 12 },                          
+      169 +  center: { alignItems: 'center', gap: 8, paddingVertical: 48 
+          +},                                                            
+      170 +  muted: { color: colors.muted, fontSize: 14 },               
+      171 +  totalCard: {                                                
+      172 +    backgroundColor: colors.surface,                          
+      173 +    borderRadius: 14,                                         
+      174 +    padding: 16,                                              
+      175 +    gap: 4,                                                   
+      176 +    boxShadow: '0 1px 3px rgba(0,0,0,0.08)',                  
+      177 +  },                                                          
+      178 +  total: { fontSize: 32, fontWeight: '700', color: colors.text
+          +, fontVariant: ['tabular-nums'] },                            
+      179 +  freshRow: {                                                 
+      180 +    flexDirection: 'row',                                     
+      181      alignItems: 'center',
+       15 -    justifyContent: 'center',                                 
+      182 +    justifyContent: 'space-between',                          
+      183 +    marginTop: 8,                                             
+      184    },
+      185 +  fresh: { color: colors.muted, fontSize: 13 },               
+      186 +  staleText: { color: colors.warning, fontWeight: '600' },    
+      187 +  refresh: {                                                  
+      188 +    borderWidth: 1,                                           
+      189 +    borderColor: colors.primary,                              
+      190 +    borderRadius: 8,                                          
+      191 +    paddingHorizontal: 12,                                    
+      192 +    paddingVertical: 6,                                       
+      193 +  },                                                          
+      194 +  refreshText: { color: colors.primary, fontSize: 14, fontWeig
+          +ht: '600' },                                                  
+      195 +  disabled: { opacity: 0.5 },                                 
+      196 +  card: {                                                     
+      197 +    backgroundColor: colors.surface,                          
+      198 +    borderRadius: 14,                                         
+      199 +    padding: 16,                                              
+      200 +    gap: 6,                                                   
+      201 +    boxShadow: '0 1px 3px rgba(0,0,0,0.08)',                  
+      202 +  },                                                          
+      203 +  rowHeader: { flexDirection: 'row', justifyContent: 'space-be
+          +tween', marginBottom: 4 },                                    
+      204 +  asset: { fontSize: 18, fontWeight: '700', color: colors.text
+          + },                                                           
+      205 +  usd: { fontSize: 16, color: colors.text, fontVariant: ['tabu
+          +lar-nums'] },                                                 
+      206 +  line: { flexDirection: 'row', justifyContent: 'space-between
+          +', gap: 12 },                                                 
+      207 +  lineLabel: { color: colors.muted, fontSize: 14 },           
+      208 +  lineValue: {                                                
+      209 +    color: colors.text,                                       
+      210 +    fontSize: 14,                                             
+      211 +    fontVariant: ['tabular-nums'],                            
+      212 +    flexShrink: 1,                                            
+      213 +    textAlign: 'right',                                       
+      214 +  },                                                          
+      215 +  lineStrong: { fontWeight: '600' },                          
+      216 +  warningBox: { backgroundColor: colors.warningBg, borderRadiu
+          +s: 10, padding: 12, gap: 6 },                                 
+      217 +  warningText: { color: colors.warning, fontSize: 14 },       
+      218 +  errorBox: { backgroundColor: colors.dangerBg, borderRadius: 
+          +14, padding: 16, gap: 12 },                                   
+      219 +  errorText: { color: colors.danger, fontSize: 15 },          
+      220 +  button: {                                                   
+      221 +    backgroundColor: colors.primary,                          
+      222 +    borderRadius: 10,                                         
+      223 +    paddingVertical: 12,                                      
+      224 +    alignItems: 'center',                                     
+      225 +  },                                                          
+      226 +  buttonText: { color: colors.onPrimary, fontSize: 16, fontWei
+          +ght: '600' },                                                 
+      227 +  link: { color: colors.primary, fontSize: 14, fontWeight: '60
+          +0' },                                                         
+      228 +  changeToken: { alignSelf: 'center', paddingVertical: 16 },  
+      229  });
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ Lint rejects setState-in-effect. Switch to useSyncExternalStore
+  (hydration-safe via server snapshot, also syncs tabs).
+
+⏺ Write(src/auth/token-context.tsx)
+  ⎿  Added 29 lines, removed 25 lines
+       1  import { useQueryClient } from '@tanstack/react-query';
+       2 -import { createContext, useCallback, useContext, useEffect, use
+         -State, type ReactNode } from 'react';                          
+       2 +import { useCallback, useSyncExternalStore } from 'react';     
+       3  
+       4  import { clearToken, getToken, setToken } from '@/api/client';
+       5  
+       6 -type TokenState = {                                            
+       7 -  // undefined until read from localStorage after mount (static
+         - prerender has no storage).                                    
+       8 -  token: string | null | undefined;                            
+       9 -  save: (token: string) => void;                               
+      10 -  clear: () => void;                                           
+      11 -};                                                             
+       6 +const listeners = new Set<() => void>();                       
+       7  
+      13 -const TokenContext = createContext<TokenState | null>(null);   
+       8 +function subscribe(listener: () => void) {                     
+       9 +  listeners.add(listener);                                     
+      10 +  // Another tab changed the token.                            
+      11 +  window.addEventListener('storage', listener);                
+      12 +  return () => {                                               
+      13 +    listeners.delete(listener);                                
+      14 +    window.removeEventListener('storage', listener);           
+      15 +  };                                                           
+      16 +}                                                              
+      17  
+      15 -export function TokenProvider({ children }: { children: ReactNo
+         -de }) {                                                        
+      16 -  const queryClient = useQueryClient();                        
+      17 -  const [token, setTokenState] = useState<string | null | undef
+         -ined>(undefined);                                              
+      18 +function notify() {                                            
+      19 +  listeners.forEach((l) => l());                               
+      20 +}                                                              
+      21  
+      19 -  useEffect(() => {                                            
+      20 -    setTokenState(getToken());                                 
+      21 -  }, []);                                                      
+      22 +// undefined during static prerender and hydration (no storage 
+         +there), then string | null.                                    
+      23 +const getServerSnapshot = () => undefined;                     
+      24  
+      25 +export function useToken() {                                   
+      26 +  const queryClient = useQueryClient();                        
+      27 +  const token = useSyncExternalStore<string | null | undefined>
+         +(                                                              
+      28 +    subscribe,                                                 
+      29 +    getToken,                                                  
+      30 +    getServerSnapshot,                                         
+      31 +  );                                                           
+      32 +                                                               
+      33    const save = useCallback(
+      34      (value: string) => {
+      25 -      setToken(value);                                         
+      35        queryClient.clear();
+      27 -      setTokenState(value.trim());                             
+      36 +      setToken(value);                                         
+      37 +      notify();                                                
+      38      },
+      39      [queryClient],
+      40    );
+      41  
+      42    const clear = useCallback(() => {
+      33 -    clearToken();                                              
+      43      queryClient.clear();
+      35 -    setTokenState(null);                                       
+      44 +    clearToken();                                              
+      45 +    notify();                                                  
+      46    }, [queryClient]);
+      47  
+      38 -  return <TokenContext.Provider value={{ token, save, clear }}>
+         -{children}</TokenContext.Provider>;                            
+      48 +  return { token, save, clear };                               
+      49  }
+      40 -                                                               
+      41 -export function useToken(): TokenState {                       
+      42 -  const ctx = useContext(TokenContext);                        
+      43 -  if (!ctx) throw new Error('useToken must be used inside Token
+         -Provider');                                                    
+      44 -  return ctx;                                                  
+      45 -}                                                              
+
+⏺ Bash(sed -i '' -e 's/import { TokenProvider, useToken } from/import { useToken
+      } from/' -e '/<TokenProvider>/d' -e '/<\/TokenProvider>/d'
+      src/app/_layout.tsx && npx…)
+  ⎿  > cashmine@1.0.0 check
+     > tsc --noEmit && expo lint && prettier --check .
+     … +2 lines (ctrl+o to expand)
+  ⎿  Updated src/app/_layout.tsx (+5 -7)
+      3  import { useState } from 'react';
+      4  import { ActivityIndicator, StyleSheet, View } from 'react-nativ
+         e';
+      5  
+      6 -import { TokenProvider, useToken } from '@/auth/token-context'; 
+      6 +import { useToken } from '@/auth/token-context';                
+      7  import { TokenScreen } from '@/components/token-screen';
+      8  import { colors } from '@/theme';
+      9  
+     ...
+      19  
+      20    return (
+      21      <QueryClientProvider client={queryClient}>
+      22 -      <TokenProvider>                                          
+      23 -        <View style={styles.page}>                             
+      24 -          <View style={styles.root}>                           
+      25 -            <TokenGate />                                      
+      26 -          </View>                                              
+      22 +      <View style={styles.page}>                               
+      23 +        <View style={styles.root}>                             
+      24 +          <TokenGate />                                        
+      25          </View>
+      28 -      </TokenProvider>                                         
+      26 +      </View>                                                  
+      27      </QueryClientProvider>
+      28    );
+      29  }
+
+⏺ Checks pass. Quick sanity on amount math with the real response:
+
+  Ran 1 shell command (ctrl+o to expand)
+⏺ Math checks out (USDT 870.533207 × 1.0002 = 870.71, etc.). Commit, then
+  deploy.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ Deployed. Verify live URL, update README, commit.
+
+⏺ Bash(curl -sS -o /dev/null -w '%{http_code}\n'
+      https://naxel1-cashmine.expo.app/ && sed -i '' -e 's#^Live: TBD (first
+      deploy pending)#Live: https://naxel1-cashmine.e…)
+  ⎿  200
+     Checking formatting...
+     All matched files use Prettier code style!
+     77f569f docs: live link and current state in README
+  ⎿  Updated README.md (+4 -2)
+      2  
+      3  Phone-sized web app (Expo, React Native Web) to view payback bal
+         ances and claim them.
+      4  
+      5 -Live: TBD (first deploy pending)                                
+      5 +Live: https://naxel1-cashmine.expo.app                          
+      6  
+      7  ## Run locally
+      8  
+     ...
+      18  ## What works
+      19  
+      20  - Typed API client (`src/api/client.ts`) with zod validation, t
+          imeouts and typed errors.
+      21 -- UI: not built yet.                                           
+      21 +- Token screen: token entered on first open, stored in this bro
+         +wser, "Change token" on Home.                                  
+      22 +- Home: USD total (available + pending + claiming), per-asset b
+         +alances, snapshot age, refresh button, auto-refresh every 15 s,
+         + loading / error / retry, stale-data banner when a refresh fail
+         +s.                                                             
+      23 +- Not yet: claim flow, unit tests, activity.                   
+      24  
+      25  Decisions, AI usage and known issues: see [NOTES.md](NOTES.md).
+
+⏺ Scaffold changes, Home and first deploy are done. Live at
+  https://naxel1-cashmine.expo.app. The page loads (HTTP 200), but I haven't
+  opened it with a token or looked at the browser console yet — that's the next
+  check. Nothing is pushed to GitHub.
+
+  Commits
+  - cb35755 — new client.ts, AGENTS.md (token rule + Domain rules), NOTES.md
+    skeleton, README. Also includes your deletes of the proxy and .env.example.
+    The CORS rule in AGENTS.md said to call the API only through API routes,
+    which no longer matches, so I replaced it. I added BRIEF.md to
+    .prettierignore so npm run check passes without reformatting the brief.
+  - c5ae48d — src/lib/amount.ts, balances schema, token screen, Home.
+  - 77f569f — README live link and what works.
+
+  What's built
+  - Amounts: amounts are converted to whole-number units (BigInt) when the
+    response is validated. USD is computed the same way, with no floating point,
+    and rounded to cents once, at the end. Your sample gives USDT $870.71, BTC
+    $839.09, ETH $30,432.93, total $32,142.73. The invalid examples from the
+    docs (.5, 1., 05, 1e-3) are rejected.
+  - Token: read from browser storage after the page loads, so the prebuilt
+    static page doesn't break. Changing it also updates other open tabs and
+    clears cached data.
+  - Home:
+    - USD total and per-asset available / pending / claiming.
+    - "Updated Xs ago", turning to a warning colour after 60 s.
+    - Refresh button, plus automatic refresh every 15 s.
+    - Loading, error/retry, and a banner keeping the old figures when a refresh
+      fails. An invalid token offers "Change token".
+    - Retries only on 5xx/network errors and 429, waiting retryAfterMs on 429.
+
+  Docs summary
+
+  - Auth: header Authorization: Bearer <token>. Base URL
+    https://task-api.cashmine.io/v1. CORS is open; the API accepts the
+    Idempotency-Key header and lets the browser read Retry-After and
+    Idempotent-Replayed.
+  - Endpoints:
+    - GET /balances → {asOf, items[{asset, decimals, available, pending, 
+      claiming, usdPrice}]}, a snapshot recalculated every 15 s.
+    - GET /activity?limit=1..20&cursor= → signed amount, nextCursor is null on
+      the last page.
+    - GET /claim-options?asset= → {minAmount, fee, destinations[]}.
+    - POST /claims → 201, or 200 for a repeated request.
+    - GET /claims/{id}.
+  - Amount format: decimal strings, never numbers, matching
+    ^(0|[1-9]\d*)(\.\d+)?$, with at most decimals places. Fewer places are fine
+    ("50.12" with 6).
+  - Claim rules: minAmount ≤ amount ≤ available, where the server checks
+    available live, not against the snapshot. At most decimals places. You
+    receive amount − fee. Minimum and fee are set per asset, not fixed.
+  - Statuses: pending → completed | failed within about 20 s. On failure the
+    amount goes back to available, with a failureReason. A new claim leaves
+    available at once and moves to claiming; the balances snapshot may show it
+    up to 15 s late.
+  - Idempotency: the same key and body returns the original claim (200,
+    Idempotent-Replayed: true). The same key with a different body returns 409
+    IDEMPOTENCY_MISMATCH.
+  - Errors: {error:{code,message,field?}}.
+    - 400 VALIDATION
+    - 401 UNAUTHORIZED
+    - 404 NOT_FOUND
+    - 409 IDEMPOTENCY_MISMATCH
+    - 429 RATE_LIMITED (retryAfterMs)
+    - 500/503 SERVER
+    - 504 TIMEOUT (outcome unknown)
+  - Not covered by the docs (to go under Assumptions):
+    - A fee equal to or larger than the amount; the client also requires amount 
+      > fee.
+    - There's no endpoint that lists claims, so the app has to remember its own
+      claim ids.
+    - How many decimals the fee and minimum can have.
+    - Actual rate-limit numbers.
+    - Max uses the snapshot's available, so the server may still reject it.
+
+  Still to do:
+  - Open the live link with your token and check the console.
+  - Claim flow, including the balance-after-claim discussion with AI the brief
+    asks for.
+  - Unit tests: no test runner is installed yet. Node 22 can run the TS files
+    directly, which is how I checked the math above.
+  - Push to GitHub before 10:00 UTC.
+
+✻ Brewed for 5m 48s · done 11:45 AM
+
+❯ Before building Claim: the brief asks for at least two approaches to what the 
+  balance shows right after a claim is submitted. User feedback pulls both      
+  ways: "I claimed and my balance didn't change, so I claimed again" vs "My     
+  balance dropped, then jumped back up, and I stopped trusting the app".        
+  Remember: server moves amount available→claiming at once, but the snapshot    
+  lags up to 15 s, and a failed claim returns it to available.                  
+  Give me 2-3 approaches with trade-offs for both complaints. Also the same for 
+  the unknown-outcome case (timeout/504 on POST). Don't write code yet, I'll    
+  pick.                                                                         
+
+⏺ 1. Balance right after a claim is submitted
+
+  Two facts shape this:
+  - asOf and the claim's createdAt both come from the server's clock. So "does
+    this snapshot already include my claim?" is an exact check: asOf >= 
+    createdAt. No guessing from the phone's clock.
+  - The server checks available live, so a second claim can never take more than
+    you have. The real harm in complaint 1 is a second claim the user didn't
+    want, not an overdraft.
+
+  A. Show the server's snapshot as-is, plus a "Claim in progress" card
+  - Home keeps showing the snapshot unchanged. A card above the asset says
+    "Claiming 0.5 ETH, pending". The Claim button for that asset is disabled
+    while the claim is pending.
+  - Complaint 1 ("didn't change, claimed again"): the numbers stay wrong for up
+    to 15 s. The card and the disabled button stop the second tap, but the user
+    still sees old numbers.
+  - Complaint 2 ("dropped, then jumped back"): never happens. Numbers only move
+    when the server moves them.
+  - Cost: least code and nothing to reconcile, but the numbers feel stale.
+
+  B. Adjust the balance in the app immediately, then hand back to the server
+  - The moment the POST returns 201/200, the app shows available − amount and
+    claiming + amount for that asset, tracked by claim id.
+  - The app stops adjusting once a snapshot arrives with asOf >= 
+    claim.createdAt, because the server's number already includes the claim.
+  - If the claim fails, the adjustment is dropped and refreshed balances are
+    fetched. The card says "Claim failed: <failureReason>. 0.5 ETH is back in
+    available."
+  - Complaint 1: fixed. The balance drops at once.
+  - Complaint 2: the only jump back is a real failure, and it comes with an
+    explanation. A sloppy version would subtract twice and then jump; the asOf
+    check prevents that.
+  - Cost: the most logic, but every input is a server value, and it's easy to
+    unit-test as a pure function: (snapshot, my claims) → displayed balance.
+
+  C. Mark the asset as "updating" until the server catches up
+  - That asset's available/claiming show a greyed "Updating…" with the previous
+    value struck through, until asOf >= createdAt. That usually takes 15 s or
+    less. Claim is disabled meanwhile.
+  - Complaint 1: fixed. The user can't claim again and can see something is
+    happening.
+  - Complaint 2: fixed. No number appears that later reverses.
+  - Cost: the balance is effectively hidden for up to 15 s on every claim, which
+    feels slow. On a failed claim it still has to show the amount coming back.
+
+  My pick: B. It answers complaint 1 directly. It keeps complaint 2 to real
+  failures, which come with an explanation. It also gives the claim form a
+  correct "Max" right after a claim. Add A's disabled button while a claim for
+  that asset is pending as a second guard.
+
+  2. Unknown outcome (network error, timeout, 500/503/504 on POST)
+
+  One catch first: re-sending with the same key is not a read-only status check.
+  If the first request never reached the server, the re-send creates the claim.
+  That matches what the user confirmed, so it's fine, but the wording on screen
+  should say "Retry", not "Check". Also note:
+  - With no list-claims endpoint, the only exact way to resolve an unknown claim
+    is a re-send with the same key.
+  - The docs don't say how long the server remembers a key. That goes under
+    Assumptions.
+
+  A. Retry quietly with the same key
+  - After an unknown outcome, re-send with the same key 2–3 times (about 1 s, 3
+    s, 7 s apart; on 429 wait retryAfterMs). The screen says "Submitting…
+    confirming result".
+  - Most blips resolve without the user ever seeing an error.
+  - Risk: during a long outage the user waits about 10 s or more and then still
+    needs a fallback screen.
+
+  B. Show the user it's unknown and let them decide
+  - Screen: "We couldn't confirm your claim of 0.5 ETH. It may or may not have
+    gone through." Buttons: Retry (same key, safe) and Close.
+  - Close keeps the saved claim attempt, so Home keeps showing a "Claim not
+    confirmed: Retry" banner, even after a reload.
+  - The asset's Claim button stays disabled until the outcome is known, so no
+    new key can ever be created for that attempt.
+  - Clear and honest, but it puts a scary choice in front of the user for every
+    short network blip.
+
+  C. Treat it as a probable claim in the balance
+  - Same as B, but Home also shows the amount as "claiming (unconfirmed)", using
+    the balance adjustment from 1-B.
+  - Protects against complaint 1, because the user doesn't think the money is
+    still free.
+  - Risk: if the claim never actually landed, the balance later jumps back,
+    which is complaint 2 again, and this time it isn't a real failure. The way
+    to reverse it is to show a definite result: once a retry returns 201 or 4xx,
+    resolve it explicitly.
+
+  My pick: A, then B.
+  - Retry quietly a few times first, then fall back to B's screen and the saved
+    banner.
+  - Don't adjust the balance for an unknown claim (reject C). Showing money as
+    moved before the server confirms it is exactly what makes complaint 2
+    happen.
+  - What resolves it:
+    - 201/200 → it becomes a normal claim (1-B adjustment, polling).
+    - 4xx such as VALIDATION/insufficient → a definite "no claim was created",
+      saved attempt cleared, message shown.
+    - 409 → shouldn't happen, because the body is saved with the key. If it
+      does, show it as an error and keep the saved attempt for support.
+
+  Which do you pick: 1 A, B or C; 2 A, B, C or A then B? Once you choose, I'll
+  write the reasoning and the rejected options into the Decisions section of
+  NOTES.md.
+
+✻ Cooked for 37s · done 11:52 AM
+
+❯ 1: B with A's disabled button. 2: A then B.                                   
+  One gap in 1-B: if the claim ids live only in memory, a reload within 15 s    
+  shows the old snapshot again, and that is complaint 1 after a reload. Persist 
+  my submitted claims {id, asset, amount, createdAt} in localStorage, restore   
+  the adjustment on load, and drop each one once a snapshot has asOf >=         
+  createdAt or the claim is completed/failed.                                   
+  Write the displayed balance as a pure function (snapshot, myClaims) →         
+  balances in src/lib, with unit tests (vitest): normal, after asOf catches up  
+  (no double subtract), failed claim, two claims on one asset.                  
+  Then write Decisions into NOTES.md, and build the Claim flow. Commit after    
+  each step.                                                                    
+
+⏺ Plan: vitest + pure displayBalances/pruneClaims with tests → commit; NOTES
+  Decisions → commit; Claim flow → commit.
+
+  There's one gap in the drop rule. A completed claim must not drop the
+  adjustment while the snapshot is still older than createdAt, or the old
+  (too-high) available comes back. That can happen if refreshes are failing. So
+  the function adjusts by status: pending → available−, claiming+; completed →
+  available− only; failed → nothing. It does that only while asOf < createdAt.
+
+⏺ Bash(date -u +%H:%M && npm i -D vitest@^3 2>&1 | tail -2 && npx vitest
+      --version)
+  ⎿  08:55
+
+     Run `npm audit` for details.
+     vitest/3.2.7 darwin-arm64 node-v22.17.1
+  ⎿  Updated package.json (+2 -1)
+      35      "eslint-config-expo": "^58.0.4",
+      36      "eslint-config-prettier": "^10.1.8",
+      37      "prettier": "^3.9.10",
+      38 -    "typescript": "~6.0.3"                                     
+      38 +    "typescript": "~6.0.3",                                    
+      39 +    "vitest": "^3.2.7"                                         
+      40    },
+      41    "scripts": {
+      42      "start": "expo start",
+  ⎿  … 1 more file changed
+  ⎿  (timeout 3m)
+
+⏺ 65 min to deadline. Writing the lib + tests.
+
+⏺ Write(src/lib/displayed-balance.ts)
+  ⎿  Wrote 63 lines to src/lib/displayed-balance.ts
+       1 import { parseAmount, usdValue, type Decimal } from './amount';
+       2 
+       3 export type ClaimStatus = 'pending' | 'completed' | 'failed';
+       4 
+       5 // A claim this browser submitted, persisted so a reload keeps t
+       6 export type MyClaim = {
+       7   id: string;
+       8   asset: string;
+       9   amount: string;
+      10   createdAt: string;
+     … +65 lines (ctrl+o to expand)
+
+⏺ Write(src/lib/displayed-balance.test.ts)
+  ⎿  Wrote 112 lines to src/lib/displayed-balance.test.ts
+       1 import { describe, expect, it } from 'vitest';
+       2 
+       3 import { parseDecimal, type Decimal } from './amount';
+         ot } from './displayed-balance';
+       5 
+       6 const price = (s: string) => parseDecimal(s) as Decimal;
+       7 
+       9 const snapshot = (asOf: string, available = 12_50000000000000000
+         0n, claiming = 0n): Snapshot => ({
+      10   asOf,
+     … +127 lines (ctrl+o to expand)
+
+⏺ Write(src/lib/amount.test.ts)
+  ⎿  Wrote 48 lines to src/lib/amount.test.ts
+       1 import { describe, expect, it } from 'vitest';
+       2 
+       3 import { formatAmount, formatUsd, parseAmount, parseDecimal, toC
+       4 
+       5 describe('parseAmount', () => {
+       6   it('parses into minor units, padding fewer places than decimal
+         s', () => {
+       8     expect(parseAmount('12', 6)).toBe(12_000000n);
+       9     expect(parseAmount('0', 8)).toBe(0n);
+      10   });
+     … +46 lines (ctrl+o to expand)
+
+⏺ Bash(npm pkg set scripts.test="vitest run" && npm pkg set scripts.check="tsc
+      --noEmit && expo lint && prettier --check . && vitest run" && npx prettier
+      --write src >…)
+  ⎿   RUN  v3.2.7 /Users/alex/projects/cashmine
+
+      ✓ src/lib/amount.test.ts (15 tests) 2ms
+     … +7 lines (ctrl+o to expand)
+  ⎿  Updated package.json (+3 -2)
+      46      "lint": "expo lint",
+      47      "format": "prettier --write .",
+      48      "typecheck": "tsc --noEmit",
+      49 -    "check": "tsc --noEmit && expo lint && prettier --check .",
+      50 -    "deploy": "expo export -p web && eas deploy --prod --non-in
+         -teractive"                                                     
+      49 +    "check": "tsc --noEmit && expo lint && prettier --check . &
+         +& vitest run",                                                 
+      50 +    "deploy": "expo export -p web && eas deploy --prod --non-in
+         +teractive",                                                    
+      51 +    "test": "vitest run"                                       
+      52    },
+      53    "private": true
+      54  }
+  ⎿  Updated src/lib/displayed-balance.test.ts (+16 -4)
+      45      expect(eth(b).available).toBe(12_000000000000000000n);
+      46      expect(eth(b).claiming).toBe(500000000000000000n);
+      47      // Total is unchanged: money moved between buckets.
+      48 -    expect(eth(b).usdTotal).toBe(displayBalances(snapshot('2026
+         --10-22T09:00:00.000Z'), []).items[0].usdTotal);                
+      48 +    expect(eth(b).usdTotal).toBe(                              
+      49 +      displayBalances(snapshot('2026-10-22T09:00:00.000Z'), [])
+         +.items[0].usdTotal,                                            
+      50 +    );                                                         
+      51    });
+      52  
+      53    it('does not subtract twice once the snapshot includes the cl
+          aim', () => {
+      52 -    const caughtUp = snapshot('2026-10-22T09:00:15.000Z', 12_00
+         -0000000000000000n, 500000000000000000n);                       
+      54 +    const caughtUp = snapshot(                                 
+      55 +      '2026-10-22T09:00:15.000Z',                              
+      56 +      12_000000000000000000n,                                  
+      57 +      500000000000000000n,                                     
+      58 +    );                                                         
+      59      const b = displayBalances(caughtUp, [claim()]);
+      60      expect(eth(b).available).toBe(12_000000000000000000n);
+      61      expect(eth(b).claiming).toBe(500000000000000000n);
+     ...
+      73    });
+      74  
+      75    it('keeps a completed claim out of available when the snapsho
+          t is still older', () => {
+      70 -    const b = displayBalances(snapshot('2026-10-22T09:00:00.000
+         -Z'), [claim({ status: 'completed' })]);                        
+      76 +    const b = displayBalances(snapshot('2026-10-22T09:00:00.000
+         +Z'), [                                                         
+      77 +      claim({ status: 'completed' }),                          
+      78 +    ]);                                                        
+      79      expect(eth(b).available).toBe(12_000000000000000000n);
+      80      expect(eth(b).claiming).toBe(0n);
+      81    });
+     ...
+       92  
+       93    it('applies only the claim the snapshot does not include yet
+           ', () => {
+       94      // Snapshot taken between the two claims: it already has t
+           he first one.
+       87 -    const between = snapshot('2026-10-22T09:00:06.000Z', 12_00
+          -0000000000000000n, 500000000000000000n);                      
+       95 +    const between = snapshot(                                 
+       96 +      '2026-10-22T09:00:06.000Z',                             
+       97 +      12_000000000000000000n,                                 
+       98 +      500000000000000000n,                                    
+       99 +    );                                                        
+      100      const b = displayBalances(between, [
+      101        claim(),
+     … 1 more lines (ctrl+o to expand)
+
+⏺ 24 tests pass. Commit step 1.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ NOTES Decisions next.
+
+⏺ Write(NOTES.md)
+  ⎿  Added 37 lines, removed 13 lines
+       2  
+       3  ## Decisions
+       4  
+       5 -- **Direct API calls, no proxy.** The task API has open CORS an
+         -d the token belongs to the user, so there is                   
+       6 -  nothing secret to hide server-side. The scaffold's server pro
+         -xy and `.env` were removed; the app is a static web build.     
+       7 -- **Token in localStorage.** Required by the brief (entered on 
+         -first open, changeable). Trade-off: readable by any            
+       8 -  script on the page (XSS); acceptable here because the app loa
+         -ds no third-party scripts.                                     
+       9 -- **Amounts as BigInt minor units.** Strings from the API are p
+         -arsed into `bigint` scaled by the asset's `decimals`;          
+      10 -  fee, receive amount and validation are exact integer math. Al
+         -ternatives: `Number` (rejected: float error on money),         
+      11 -  decimal.js/big.js (works, but adds a dependency and still nee
+         -ds decimals enforced by hand).                                 
+      12 -- **USD total = available + pending + claiming.** Shows the use
+         -r's whole payback position; per-asset breakdown shows          
+      13 -  what is claimable now. USD is computed with fixed-point BigIn
+         -t too and rounded once for display.                            
+      14 -- **Unknown outcome = network error, timeout, 500/503/504.** Re
+         -tried with the same `Idempotency-Key`, which the API           
+      15 -  guarantees never creates a second claim. The pending intent i
+         -s persisted so a reload cannot lose the key.                   
+      16 -- TODO: what the balance shows right after a claim is submitted
+         - (to decide after comparing approaches with AI).               
+      17 -- TODO: what the user sees when a claim result is unknown (UI s
+         -ide).                                                          
+       5 +- **Amounts as BigInt minor units.** API strings are parsed int
+         +o `bigint` scaled by the asset's `decimals`; fee,              
+       6 +  receive amount, validation and USD totals are exact integer m
+         +ath (USD at a fixed 10^-36 scale, rounded once to              
+       7 +  cents for display). ETH has 18 decimals, beyond `Number` prec
+         +ision. Alternatives: `Number` (rejected: float error),         
+       8 +  decimal.js/big.js (fine, but a dependency that still needs de
+         +cimals enforced by hand).                                      
+       9 +- **Balance right after a claim: adjust locally, hand back to t
+         +he server.** Approaches compared with AI (see                  
+      10 +  `ai-logs/`): (A) show the raw snapshot plus a "claim in progr
+         +ess" card; (B) adjust the displayed balance at once            
+      11 +  and stop once the server's snapshot includes the claim; (C) g
+         +rey out the asset as "updating" until the snapshot             
+      12 +  catches up. Chose B plus A's disabled Claim button. B answers
+         + "my balance didn't change, so I claimed again"                
+      13 +  directly; A leaves stale numbers for up to 15 s, C hides the 
+         +balance on every claim. The "dropped, then jumped              
+      14 +  back" complaint is avoided by deciding with server clocks onl
+         +y: a snapshot includes a claim when                            
+      15 +  `asOf >= claim.createdAt`, so the adjustment never applies tw
+         +ice. The only jump back is a real failure, shown               
+      16 +  with its `failureReason`. Submitted claims `{id, asset, amoun
+         +t, createdAt, status}` are persisted in                        
+      17 +  localStorage so a reload within 15 s does not bring back the 
+         +old balance. Logic is a pure, tested function:                 
+      18 +  `src/lib/displayed-balance.ts`.                              
+      19 +  - Refinement over the first rule ("drop once completed"): a c
+         +ompleted claim still reduces `available` while                 
+      20 +    the snapshot is older than `createdAt`, otherwise a failing
+         + refresh would show the pre-claim balance again.               
+      21 +- **Unknown claim outcome (network error, timeout, 500/503/504)
+         +: retry quietly, then ask.** Compared: (A) silent              
+      22 +  retries with the same `Idempotency-Key`; (B) a "couldn't conf
+         +irm" screen with Retry; (C) also count the amount              
+      23 +  as claiming. Chose A then B: up to 3 quiet retries (1 s, 3 s,
+         + 7 s), then the screen. The intent                             
+      24 +  `{key, asset, amount, destinationId}` is saved before the POS
+         +T, so after a reload the app offers Retry with the             
+      25 +  same key, never a new one, and new claims are blocked until i
+         +t resolves. Rejected C: showing money as moved                 
+      26 +  before the server confirms is what causes "dropped, then jump
+         +ed back". Note: a same-key retry is not a pure                 
+      27 +  status check; if the first request never arrived, it creates 
+         +the claim, which is what the user confirmed.                   
+      28 +  4xx answers (VALIDATION, 409) are definite: no claim, message
+         + shown, form kept.                                             
+      29 +- **USD total = available + pending + claiming.** The whole pay
+         +back position; per-asset rows show what is                     
+      30 +  claimable now.                                               
+      31 +- **Direct API calls, no proxy.** The API has open CORS and the
+         + token belongs to the user, so nothing secret sits             
+      32 +  server-side; the app is a static web build.                  
+      33 +- **Token in localStorage.** Required by the brief. Readable by
+         + any script on the page (XSS); acceptable because              
+      34 +  the app loads no third-party scripts. Changing the token clea
+         +rs cached data and local claims.                               
+      35  
+      36 +## Assumptions                                                 
+      37 +                                                               
+      38 +- Claim options `minAmount`/`fee` fit within the asset's `decim
+         +als`; otherwise the form shows an error.                       
+      39 +- `amount` must be greater than `fee` (docs do not cover fee >=
+         + amount).                                                      
+      40 +- The server remembers idempotency keys long enough for a retry
+         + after reload (docs give no TTL).                              
+      41 +- Comma typed as decimal separator is accepted as a dot.       
+      42 +                                                               
+      43  ## Working with AI
+      44  
+      45  TODO: three moments with pointers into `ai-logs/`.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ Now Claim flow. Shared localStorage store first.
+
+⏺ Write(src/lib/local-store.ts)
+  ⎿  Wrote 60 lines to src/lib/local-store.ts
+       1 import { useSyncExternalStore } from 'react';
+       2 import type { z } from 'zod';
+       3 
+         s components and tabs.
+       5 export function createLocalStore<T>(key: string, schema: z.ZodTy
+         pe<T>, fallback: T) {
+       6   const listeners = new Set<() => void>();
+       8   let cachedValue = fallback;
+       9 
+      10   function read(): T {
+     … +56 lines (ctrl+o to expand)
+
+⏺ Write(src/claims/store.ts)
+  ⎿  Wrote 56 lines to src/claims/store.ts
+       1 import { z } from 'zod';
+       2 
+       3 import { type ClaimStatus, type MyClaim } from '@/lib/displayed-
+         balance';
+       4 import { createLocalStore } from '@/lib/local-store';
+       6 const myClaimSchema = z.object({
+       7   id: z.string(),
+       8   asset: z.string(),
+       9   amount: z.string(),
+      10   createdAt: z.string(),
+     … +54 lines (ctrl+o to expand)
+
+⏺ Write(src/lib/claim-rules.ts)
+  ⎿  Wrote 38 lines to src/lib/claim-rules.ts
+       1 import { parseAmount } from './amount';
+       2 
+       3 export type ClaimLimits = {
+       4   decimals: number;
+       5   available: bigint;
+       6   minAmount: string;
+       7   fee: string;
+       8 };
+       9 
+      10 export type ClaimCheck =
+     … +34 lines (ctrl+o to expand)
+
+⏺ Write(src/lib/claim-rules.test.ts)
+  ⎿  Wrote 54 lines to src/lib/claim-rules.test.ts
+       1 import { describe, expect, it } from 'vitest';
+       2 
+       3 import { checkClaim } from './claim-rules';
+       4 
+       5 // ETH: 18 decimals, 1.5 available, min 0.01, fee 0.0012.
+       6 const limits = {
+       7   decimals: 18,
+       8   available: 1_500000000000000000n,
+       9   minAmount: '0.01',
+      10   fee: '0.0012',
+     … +48 lines (ctrl+o to expand)
+⏺ I'll keep pending claims in retention until polling returns a final status,
+  since they're still needed to disable the button and show the
+  banner—displayBalances already excludes claims covered by the snapshot.
+
+⏺ Update(src/lib/displayed-balance.ts)
+  ⎿  Added 6 lines, removed 2 lines
+      57    };
+      58  }
+      59  
+      60 -// Claims still worth keeping: not yet in a snapshot and not fa
+         -iled.                                                          
+      60 +// Claims still worth keeping. Failed: nothing to adjust. Compl
+         +eted and in a snapshot: done.                                  
+      61 +// Pending stays until polling sees a final status (blocks a se
+         +cond claim, shows progress);                                   
+      62 +// displayBalances already ignores it once the snapshot include
+         +s it.                                                          
+      63  export function pruneClaims(myClaims: MyClaim[], asOf: string):
+           MyClaim[] {
+      62 -  return myClaims.filter((c) => c.status !== 'failed' && !snaps
+         -hotIncludes(asOf, c));                                         
+      64 +  return myClaims.filter(                                      
+      65 +    (c) => c.status === 'pending' || (c.status === 'completed' 
+         +&& !snapshotIncludes(asOf, c)),                                
+      66 +  );                                                           
+      67  }
+
+  Read 1 file (ctrl+o to expand)
+
+⏺ Update(src/lib/displayed-balance.test.ts)
+  ⎿  Added 9 lines, removed 5 lines
+      113  });
+      114  
+      115  describe('pruneClaims', () => {
+      116 -  it('drops claims the snapshot includes and failed claims', (
+          -) => {                                                        
+      116 +  it('drops failed claims and completed claims the snapshot in
+          +cludes; keeps pending', () => {                               
+      117      const claims = [
+      118 -      claim(),                                                
+      119 -      claim({ id: 'clm_2', createdAt: '2026-10-22T09:00:20.000
+          -Z' }),                                                        
+      120 -      claim({ id: 'clm_3', createdAt: '2026-10-22T09:00:20.000
+          -Z', status: 'failed' }),                                      
+      118 +      claim({ id: 'pending_included' }),                      
+      119 +      claim({ id: 'completed_included', status: 'completed' })
+          +,                                                             
+      120 +      claim({ id: 'completed_newer', createdAt: '2026-10-22T09
+          +:00:20.000Z', status: 'completed' }),                         
+      121 +      claim({ id: 'failed', createdAt: '2026-10-22T09:00:20.00
+          +0Z', status: 'failed' }),                                     
+      122      ];
+      122 -    expect(pruneClaims(claims, '2026-10-22T09:00:15.000Z').map
+          -((c) => c.id)).toEqual(['clm_2']);                            
+      123 +    expect(pruneClaims(claims, '2026-10-22T09:00:15.000Z').map
+          +((c) => c.id)).toEqual([                                      
+      124 +      'pending_included',                                     
+      125 +      'completed_newer',                                      
+      126 +    ]);                                                       
+      127    });
+      128  });
+
+⏺ Write(src/api/balances.ts)
+  ⎿  Added 28 lines, removed 18 lines
+       1  import { useQuery } from '@tanstack/react-query';
+       2 +import { useEffect, useMemo } from 'react';                    
+       3  import { z } from 'zod';
+       4  
+       4 -import { AMOUNT_RE, parseAmount, parseDecimal, usdValue, type D
+         -ecimal } from '@/lib/amount';                                  
+       5 +import { myClaimsStore, replaceMyClaims } from '@/claims/store'
+         +;                                                              
+       6 +import { AMOUNT_RE, parseAmount, parseDecimal, type Decimal } f
+         +rom '@/lib/amount';                                            
+       7 +import { displayBalances, pruneClaims, type DisplayedItem } fro
+         +m '@/lib/displayed-balance';                                   
+       8  
+       9  import { api, ApiError } from './client';
+      10  
+     ...
+      23      const available = parseAmount(item.available, item.decimals
+          );
+      24      const pending = parseAmount(item.pending, item.decimals);
+      25      const claiming = parseAmount(item.claiming, item.decimals);
+      23 -    const usdPrice = parseDecimal(item.usdPrice) as Decimal;   
+      26      if (available === null || pending === null || claiming === 
+          null) {
+      27        ctx.addIssue({ code: 'custom', message: `${item.asset}: m
+          ore places than decimals` });
+      28        return z.NEVER;
+      29      }
+      28 -    const total = available + pending + claiming;              
+      30      return {
+      31        asset: item.asset,
+      32        decimals: item.decimals,
+      33        available,
+      34        pending,
+      35        claiming,
+      35 -      usdPrice,                                                
+      36 -      // USD at USD_SCALE; round only when displaying.         
+      37 -      usdTotal: usdValue(total, item.decimals, usdPrice),      
+      36 +      usdPrice: parseDecimal(item.usdPrice) as Decimal,        
+      37      };
+      38    });
+      39  
+      41 -export const balancesSchema = z                                
+      42 -  .object({                                                    
+      43 -    asOf: z.iso.datetime(),                                    
+      44 -    items: z.array(balanceItemSchema),                         
+      45 -  })                                                           
+      46 -  .transform((b) => ({                                         
+      47 -    ...b,                                                      
+      48 -    usdTotal: b.items.reduce((sum, item) => sum + item.usdTotal
+         -, 0n),                                                         
+      49 -  }));                                                         
+      40 +export const balancesSchema = z.object({                       
+      41 +  asOf: z.iso.datetime(),                                      
+      42 +  items: z.array(balanceItemSchema),                           
+      43 +});                                                            
+      44  
+      51 -export type Balances = z.infer<typeof balancesSchema>;         
+      52 -export type Balance = Balances['items'][number];               
+      45 +export type Balance = DisplayedItem;                           
+      46  
+      47  export const balancesKey = ['balances'] as const;
+      48  
+      56 -export function useBalances() {                                
+      49 +function useBalanceSnapshot() {                                
+      50    return useQuery({
+      51      queryKey: balancesKey,
+      52      queryFn: ({ signal }) => api('/balances', balancesSchema, {
+           signal }),
+     ...
+      64          : Math.min(1000 * 2 ** attempt, 8000),
+      65    });
+      66  }
+      67 +                                                               
+      68 +// Snapshot adjusted for claims this browser submitted that the
+         + snapshot does not include yet.                                
+      69 +export function useBalances() {                                
+      70 +  const query = useBalanceSnapshot();                          
+      71 +  const myClaims = myClaimsStore.use();                        
+      72 +  const snapshot = query.data;                                 
+      73 +                                                               
+      74 +  useEffect(() => {                                            
+      75 +    if (snapshot) replaceMyClaims(pruneClaims(myClaimsStore.rea
+         +d(), snapshot.asOf));                                          
+      76 +  }, [snapshot, myClaims]);                                    
+      77 +                                                               
+      78 +  const data = useMemo(                                        
+      79 +    () => (snapshot ? displayBalances(snapshot, myClaims) : und
+         +efined),                                                       
+      80 +    [snapshot, myClaims],                                      
+      81 +  );                                                           
+      82 +  return { ...query, data };                                   
+      83 +}                                                              
+
+⏺ Claims API: schemas, options, POST with retry, status polling.
+
+⏺ Write(src/api/claims.ts)
+  ⎿  Wrote 116 lines to src/api/claims.ts
+       1 import { useQueries, useQuery, useQueryClient } from '@tanstack/
+         react-query';
+       2 import { useEffect } from 'react';
+       4 
+       5 import { addMyClaim, intentStore, setMyClaimStatus, type ClaimIn
+         tent } from '@/claims/store';
+       6 import { AMOUNT_RE } from '@/lib/amount';
+       8 
+       9 import { balancesKey } from './balances';
+      10 import { api, ApiError } from './client';
+     … +125 lines (ctrl+o to expand)
+
+⏺ Claim screen + status screen.
+
+⏺ Write(src/app/claim.tsx)
+  ⎿  Wrote 415 lines to src/app/claim.tsx
+       1 import { router, Stack, useLocalSearchParams } from 'expo-router
+         ';
+       2 import { useState } from 'react';
+       3 import {
+       4   ActivityIndicator,
+       6   Pressable,
+       7   ScrollView,
+       8   StyleSheet,
+       9   Text,
+      10   TextInput,
+     … +455 lines (ctrl+o to expand)
+
+⏺ Write(src/app/claims/[id].tsx)
+  ⎿  Wrote 102 lines to src/app/claims/[id].tsx
+       1 import { router, Stack, useLocalSearchParams } from 'expo-router
+       2 import { ActivityIndicator, Pressable, StyleSheet, Text, View } 
+         from 'react-native';
+       3 
+       5 import { colors } from '@/theme';
+       6 
+       8   pending: 'Processing… usually done in about 20 seconds.',
+       9   completed: 'Completed. The amount is on its way to your destin
+         ation.',
+         ',
+     … +113 lines (ctrl+o to expand)
+
+⏺ Fix: save intent before POST, and derive the unknown screen from the stored
+  intent (hydration-safe).
+
+⏺ Update(src/app/claim.tsx)
+  ⎿  Added 12 lines, removed 10 lines
+      19  import { checkClaim, normalizeAmountInput } from '@/lib/claim-r
+          ules';
+      20  import { colors } from '@/theme';
+      21  
+      22 -type Step = 'form' | 'submitting' | 'unknown';                 
+      23 -                                                               
+      22  export default function ClaimScreen() {
+      23    const params = useLocalSearchParams<{ asset?: string }>();
+      24 +  // A saved intent means a claim whose result is unknown: only
+         + Retry with the same key is offered.                           
+      25    const intent = intentStore.use();
+      27 -  const [step, setStep] = useState<Step>(intent ? 'unknown' : '
+         -form');                                                        
+      26 +  const [submitting, setSubmitting] = useState(false);         
+      27    const [formError, setFormError] = useState<string | null>(nul
+          l);
+      28  
+      29    async function submit(next: ClaimIntent) {
+      31 -    setStep('submitting');                                     
+      30 +    if (submitting) return;                                    
+      31 +    // Persist before the POST so a reload or crash cannot lose
+         + the Idempotency-Key.                                          
+      32 +    intentStore.write(next);                                   
+      33 +    setSubmitting(true);                                       
+      34      setFormError(null);
+      35      try {
+      36        const claim = await submitIntent(next);
+      37        router.replace({ pathname: '/claims/[id]', params: { id: 
+          claim.id } });
+      38      } catch (e) {
+      37 -      if (e instanceof ApiError && e.outcomeUnknown) {         
+      38 -        setStep('unknown');                                    
+      39 -      } else {                                                 
+      39 +      // Outcome unknown keeps the intent (UnknownOutcome rende
+         +rs); a definite error cleared it.                              
+      40 +      if (!(e instanceof ApiError && e.outcomeUnknown)) {      
+      41          setFormError(e instanceof ApiError ? e.message : 'Unexp
+          ected response from the server.');
+      41 -        setStep('form');                                       
+      42        }
+      43 +    } finally {                                                
+      44 +      setSubmitting(false);                                    
+      45      }
+      46    }
+      47  
+      48    return (
+      49      <>
+      50        <Stack.Screen options={{ title: 'Claim' }} />
+      49 -      {step === 'submitting' ? (                               
+      51 +      {submitting ? (                                          
+      52          <View style={styles.center}>
+      53            <ActivityIndicator />
+      54            <Text style={styles.muted}>Submitting… confirming res
+          ult</Text>
+      55          </View>
+      54 -      ) : step === 'unknown' && intent ? (                     
+      56 +      ) : intent ? (                                           
+      57          <UnknownOutcome intent={intent} onRetry={() => submit(i
+          ntent)} />
+      58        ) : (
+      59          <ClaimForm initialAsset={params.asset} formError={formE
+          rror} onConfirm={submit} />
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ Bash(python3 - <<'EOF'
+      p='src/auth/token-context.tsx'…)
+  ⎿  5:import { clearClaimState } from '@/claims/store';
+     38:      clearClaimState();
+     47:    clearClaimState();
+  ⎿  Updated src/auth/token-context.tsx (+4 -0)
+      2  import { useCallback, useSyncExternalStore } from 'react';
+      3  
+      4  import { clearToken, getToken, setToken } from '@/api/client';
+      5 +import { clearClaimState } from '@/claims/store';               
+      6  
+      7  const listeners = new Set<() => void>();
+      8  
+     ...
+      34    const save = useCallback(
+      35      (value: string) => {
+      36        queryClient.clear();
+      37 +      // Local claims belong to the previous token.            
+      38 +      clearClaimState();                                       
+      39        setToken(value);
+      40        notify();
+      41      },
+     ...
+      44  
+      45    const clear = useCallback(() => {
+      46      queryClient.clear();
+      47 +    clearClaimState();                                         
+      48      clearToken();
+      49      notify();
+      50    }, [queryClient]);
+
+⏺ Home: Claim buttons + intent/pending banners.
+
+⏺ Bash(python3 - <<'EOF'
+      p='src/app/index.tsx'…)
+  ⎿  > cashmine@1.0.0 check
+     > tsc --noEmit && expo lint && prettier --check . && vitest run
+     Checking formatting...
+     … +10 lines (ctrl+o to expand)
+  ⎿  Updated src/api/claims.ts (+1 -2)
+      61        intentStore.write(null);
+      62        return claim;
+      63      } catch (e) {
+      64 -      const retryable =                                        
+      65 -        e instanceof ApiError && (e.outcomeUnknown || e.code ==
+         -= 'RATE_LIMITED');                                             
+      64 +      const retryable = e instanceof ApiError && (e.outcomeUnkn
+         +own || e.code === 'RATE_LIMITED');                             
+      65        if (!retryable || attempt >= RETRY_DELAYS_MS.length) {
+      66          // A definite answer means no claim exists for this key
+          : forget the intent.
+      67          if (!(e instanceof ApiError && e.outcomeUnknown)) inten
+          tStore.write(null);
+  ⎿  Updated src/app/claim.tsx (+10 -4)
+      68        <View style={styles.warningBox}>
+      69          <Text style={styles.warningTitle}>We couldn&apos;t conf
+          irm your claim</Text>
+      70          <Text style={styles.warningText}>
+      71 -          Claim of {intent.amount} {intent.asset} may or may no
+         -t have gone through. Retrying is safe:                         
+      72 -          it will never create a second claim.                 
+      71 +          Claim of {intent.amount} {intent.asset} may or may no
+         +t have gone through. Retrying is                               
+      72 +          safe: it will never create a second claim.           
+      73          </Text>
+      74        </View>
+      75        <Pressable style={styles.button} onPress={onRetry} access
+          ibilityRole="button">
+     ...
+      231  
+      232            {check?.ok && (
+      233              <View style={styles.summary}>
+      234 -              <Row label="Fee" value={`${formatAmount(check.fe
+          -e, balance.decimals)} ${balance.asset}`} />                   
+      234 +              <Row                                            
+      235 +                label="Fee"                                   
+      236 +                value={`${formatAmount(check.fee, balance.deci
+          +mals)} ${balance.asset}`}                                     
+      237 +              />                                              
+      238                <Row
+      239                  label="You receive"
+      240                  value={`${formatAmount(check.receive, balance.
+           decimals)} ${balance.asset}`}
+     ...
+      270                    label="Amount"
+      271                    value={`${formatAmount(check.amount, balance
+           .decimals)} ${balance.asset}`}
+      272                  />
+      270 -                <Row label="Fee" value={`${formatAmount(check.
+          -fee, balance.decimals)} ${balance.asset}`} />                 
+      273 +                <Row                                          
+      274 +                  label="Fee"                                 
+      275 +                  value={`${formatAmount(check.fee, balance.de
+          +cimals)} ${balance.asset}`}                                   
+      276 +                />                                            
+      277                  <Row
+      278                    label="You receive"
+      279                    value={`${formatAmount(check.receive, balanc
+           e.decimals)} ${balance.asset}`}
+  ⎿  Updated src/app/index.tsx (+73 -1)
+       1 -import { Stack } from 'expo-router';                           
+       1 +import { router, Stack } from 'expo-router';                   
+       2  import { useEffect, useState } from 'react';
+       3  import { ActivityIndicator, Pressable, ScrollView, StyleSheet, 
+          Text, View } from 'react-native';
+       4  
+       5  import { useBalances, type Balance } from '@/api/balances';
+       6 +import { usePendingClaims } from '@/api/claims';               
+       7  import { ApiError } from '@/api/client';
+       8  import { useToken } from '@/auth/token-context';
+       9 +import { intentStore, myClaimsStore } from '@/claims/store';   
+      10  import { formatAmount, formatUsd, toCents } from '@/lib/amount'
+          ;
+      11  import { colors } from '@/theme';
+      12  
+     ...
+      100                </View>
+      101              )}
+      102  
+      103 +            <ClaimBanners />                                  
+      104 +                                                              
+      105              {data.items.length === 0 ? (
+      106                <Text style={styles.muted}>No balances yet.</Tex
+           t>
+      107              ) : (
+     ...
+      119  }
+      120  
+      121  function BalanceRow({ item }: { item: Balance }) {
+      122 +  const myClaims = myClaimsStore.use();                       
+      123 +  const intent = intentStore.use();                           
+      124 +  // One claim per asset at a time, and none while a result is
+          + unknown.                                                     
+      125 +  const claimDisabled =                                       
+      126 +    !!intent || myClaims.some((c) => c.asset === item.asset &&
+          + c.status === 'pending');                                     
+      127    return (
+      128      <View style={styles.card}>
+      129        <View style={styles.rowHeader}>
+     ...
+      133        <Line label="Available" value={formatAmount(item.availab
+           le, item.decimals)} strong />
+      134        <Line label="Pending" value={formatAmount(item.pending, 
+           item.decimals)} />
+      135        <Line label="Claiming" value={formatAmount(item.claiming
+           , item.decimals)} />
+      136 +      <Pressable                                              
+      137 +        style={[styles.claimButton, claimDisabled && styles.di
+          +sabled]}                                                      
+      138 +        disabled={claimDisabled}                              
+      139 +        onPress={() => router.push({ pathname: '/claim', param
+          +s: { asset: item.asset } })}                                  
+      140 +        accessibilityRole="button"                            
+     … 69 more lines (ctrl+o to expand)
+  ⎿  Updated src/lib/claim-rules.test.ts (+4 -1)
+      49    it('respects asset decimals for 6-decimal assets', () => {
+      50      const usdt = { decimals: 6, available: 820_413207n, minAmou
+          nt: '10', fee: '1' };
+      51      expect(checkClaim('820.413207', usdt).ok).toBe(true);
+      52 -    expect(checkClaim('10.0000001', usdt)).toEqual({ ok: false,
+         - error: 'At most 6 decimal places.' });                        
+      52 +    expect(checkClaim('10.0000001', usdt)).toEqual({           
+      53 +      ok: false,                                               
+      54 +      error: 'At most 6 decimal places.',                      
+      55 +    });                                                        
+      56    });
+      57  });
+  ⎿  Updated src/lib/claim-rules.ts (+3 -3)
+       8  };
+       9  
+      10  export type ClaimCheck =
+      11 -  | { ok: true; amount: bigint; fee: bigint; receive: bigint } 
+      12 -  | { ok: false; error: string };                              
+      11 +  { ok: true; amount: bigint; fee: bigint; receive: bigint } | 
+         +{ ok: false; error: string };                                  
+      12  
+      13  // Users on some keyboards type a comma as the decimal separato
+          r.
+      14  export function normalizeAmountInput(input: string): string {
+     ...
+      32    }
+      33    if (amount < min) return { ok: false, error: `Minimum is ${li
+          mits.minAmount}.` };
+      34    if (amount > available) return { ok: false, error: 'More than
+           your available balance.' };
+      36 -  if (amount <= fee) return { ok: false, error: `Amount must be
+         - more than the fee (${limits.fee}).` };                        
+      35 +  if (amount <= fee)                                           
+      36 +    return { ok: false, error: `Amount must be more than the fe
+         +e (${limits.fee}).` };                                         
+      37    return { ok: true, amount, fee, receive: amount - fee };
+      38  }
+
+⏺ All checks pass (36 tests). Commit + deploy.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ Deployed 08:59 UTC. Update README "What works", commit.
+
+⏺ Bash(python3 - <<'EOF'
+      p='README.md'…)
+  ⎿  d8bc0ba docs: README reflects claim flow and tests
+  ⎿  Updated README.md (+3 -1)
+      20  - Typed API client (`src/api/client.ts`) with zod validation, t
+          imeouts and typed errors.
+      21  - Token screen: token entered on first open, stored in this bro
+          wser, "Change token" on Home.
+      22  - Home: USD total (available + pending + claiming), per-asset b
+          alances, snapshot age, refresh button, auto-refresh every 15 s,
+           loading / error / retry, stale-data banner when a refresh fail
+          s.
+      23 -- Not yet: claim flow, unit tests, activity.                   
+      23 +- Claim: pick asset, amount or Max, live validation (min, fee, 
+         +decimals, available), fee and receive amount, confirm dialog, i
+         +dempotent submit with retries, status page polling until comple
+         +ted/failed, "couldn't confirm" recovery with the same key after
+         + reload. Balance adjusts immediately after a claim and hands ba
+         +ck to the server snapshot.                                     
+      24 +- Unit tests (`npm test`): amount parsing/formatting/USD, claim
+         + validation and fee, displayed balance after claims.           
+      25 +- Not yet: activity history.                                   
+      26  
+      27  Decisions, AI usage and known issues: see [NOTES.md](NOTES.md).
+
+⏺ All three steps are committed, and the claim flow is deployed to
+  https://naxel1-cashmine.expo.app (08:59 UTC). The build, type check, lint and
+  all 36 unit tests pass, but nothing has been run against the real API yet — I
+  don't have your token. Please test it on the live link with yours (steps at
+  the end).
+
+  Commits
+  - 3343f62 — displayBalances(snapshot, myClaims) and pruneClaims in
+    src/lib/displayed-balance.ts, with vitest tests. Covers the cases you named:
+    normal, after asOf catches up (no double subtract), failed claim, two
+    claims on one asset. Also a snapshot taken between two claims, and asOf
+    exactly equal to createdAt. Plus tests for amount parsing, formatting and
+    USD rounding. npm run check now runs the tests too.
+  - 553d317 — NOTES.md Decisions: both decisions with the options I didn't pick
+    and why, plus an Assumptions list.
+  - 3c5f4af — Claim flow:
+    - Form: pick asset, type an amount or tap Max. Checked live against min,
+      fee, decimals and available. Shows fee and amount received, then a confirm
+      dialog.
+    - Submit: the claim attempt is saved to the browser before the POST. If the
+      result is unknown, it retries quietly with the same key at 1 s, 3 s and 7
+      s. Then it shows "We couldn't confirm" with Retry, which also appears
+      after a reload.
+    - Errors: a definite 4xx clears the attempt and shows the message on the
+      form.
+    - Status page: polls every 2 s until completed or failed.
+    - Home: the Claim button is disabled while that asset has a pending claim,
+      and all Claim buttons are disabled while a result is unknown. Banners show
+      pending claims and any unconfirmed one.
+  - d8bc0ba — README "What works" updated.
+
+  Where I changed your rules
+  - Completed claims: the balance adjustment doesn't stop just because a claim
+    completed. If the snapshot is still older than createdAt, removing it would
+    bring back the pre-claim balance — complaint 1 again — whenever refreshes
+    are failing. So a completed claim still lowers available (claiming
+    unchanged) until the snapshot includes it. There's a test for this, and it's
+    noted in NOTES.
+  - When a claim is removed from storage: a pending claim stays saved past asOf 
+    >= createdAt, until polling sees a final status. It's still needed to
+    disable the button and show the banner. The balance itself still ignores it
+    once the snapshot includes it, so nothing is subtracted twice.
+  - Change token wipes the saved claims and any unconfirmed attempt, because
+    they belong to the old token. An unresolved attempt from the old token is
+    lost; I haven't written this under Not done yet.
+
+  Please check on the live link with your token:
+  1. Claim 0.5 ETH: available drops and claiming rises at once. Reload within 15
+     s: still adjusted. Wait for completed or failed.
+  2. Go offline after Confirm to see the unknown screen. Go back online, tap
+     Retry: you should get one claim, not two.
+  3. Check the console for errors.
+
+  Still to do: Working with AI and Not done in NOTES.md, Activity if there's
+  time, and pushing to GitHub before 10:00 UTC. ai-logs/ is yours to fill. The
+  balance-approaches exchange in this session is the conversation the brief asks
+  for, so remove the token before exporting the logs.
+
+✻ Crunched for 5m 31s · done 11:59 AM
+
+❯ Live and dev both crash: "React has detected a change in the order of Hooks   
+  called by Home" (hook 11: useSyncExternalStore → useEffect, from useBalances  
+  balances.ts:74), then "Cannot read properties of undefined (reading           
+  'length')".                                                                   
+  Cause: createLocalStore in src/lib/local-store.ts exposes the hook as use(),  
+  called as store.use(). React Compiler is on (transform.reactCompiler=true)    
+  and treats use as React's use() API, not a hook, so it compiles the call      
+  wrongly. Rename it to useValue everywhere (local-store.ts, balances.ts,       
+  index.tsx, claim.tsx, claims/*). No other changes. Then npm run check, commit 
+  "fix: rename store hook so React Compiler treats it as a hook", push, npm     
+  run deploy.                                                                   
+
+⏺ Renaming use → useValue.
+
+⏺ Bash(grep -rnE '\.use\(\)|function use\(|write, use \}' src && sed -i '' -E
+      's/Store\.use\(\)/Store.useValue()/g' src/api/balances.ts
+      src/app/index.tsx src/app/claim…)
+  ⎿  src/app/claim.tsx:25:  const intent = intentStore.use();
+     src/app/claim.tsx:96:  const myClaims = myClaimsStore.use();
+     src/app/index.tsx:122:  const myClaims = myClaimsStore.use();
+     … +16 lines (ctrl+o to expand)
+  ⎿  Updated src/api/balances.ts (+1 -1)
+      68  // Snapshot adjusted for claims this browser submitted that the
+           snapshot does not include yet.
+      69  export function useBalances() {
+      70    const query = useBalanceSnapshot();
+      71 -  const myClaims = myClaimsStore.use();                        
+      71 +  const myClaims = myClaimsStore.useValue();                   
+      72    const snapshot = query.data;
+      73  
+      74    useEffect(() => {
+  ⎿  Updated src/app/claim.tsx (+2 -2)
+      22  export default function ClaimScreen() {
+      23    const params = useLocalSearchParams<{ asset?: string }>();
+      24    // A saved intent means a claim whose result is unknown: only
+           Retry with the same key is offered.
+      25 -  const intent = intentStore.use();                            
+      25 +  const intent = intentStore.useValue();                       
+      26    const [submitting, setSubmitting] = useState(false);
+      27    const [formError, setFormError] = useState<string | null>(nul
+          l);
+      28  
+     ...
+      93    onConfirm: (intent: ClaimIntent) => void;
+      94  }) {
+      95    const { data: balances, isPending } = useBalances();
+      96 -  const myClaims = myClaimsStore.use();                        
+      96 +  const myClaims = myClaimsStore.useValue();                   
+      97    const busyAssets = new Set(myClaims.filter((c) => c.status ==
+          = 'pending').map((c) => c.asset));
+      98  
+      99    const [asset, setAsset] = useState(initialAsset);
+  ⎿  Updated src/app/index.tsx (+4 -4)
+      119  }
+      120  
+      121  function BalanceRow({ item }: { item: Balance }) {
+      122 -  const myClaims = myClaimsStore.use();                       
+      123 -  const intent = intentStore.use();                           
+      122 +  const myClaims = myClaimsStore.useValue();                  
+      123 +  const intent = intentStore.useValue();                      
+      124    // One claim per asset at a time, and none while a result is
+            unknown.
+      125    const claimDisabled =
+      126      !!intent || myClaims.some((c) => c.asset === item.asset &&
+            c.status === 'pending');
+     ...
+      148  }
+      149  
+      150  function ClaimBanners() {
+      151 -  const intent = intentStore.use();                           
+      152 -  const pending = myClaimsStore.use().filter((c) => c.status =
+          -== 'pending');                                                
+      151 +  const intent = intentStore.useValue();                      
+      152 +  const pending = myClaimsStore.useValue().filter((c) => c.sta
+          +tus === 'pending');                                           
+      153    usePendingClaims(pending.map((c) => c.id));
+      154    return (
+      155      <>
+  ⎿  Updated src/lib/local-store.ts (+2 -2)
+      44      };
+      45    }
+      46  
+      47 -  function use(): T {                                          
+      47 +  function useValue(): T {                                     
+      48      return useSyncExternalStore(subscribe, read, () => fallback
+          );
+      49    }
+      50  
+      51 -  return { read, write, use };                                 
+      51 +  return { read, write, useValue };                            
+      52  }
+      53  
+      54  function safeJson(raw: string): unknown {
+
+  Pushed to main, ran 1 shell command (ctrl+o to expand)
+
+⏺ The rename is committed, pushed and deployed. I haven't opened the live app,
+  so I haven't confirmed the hooks crash is gone — please reload
+  https://naxel1-cashmine.expo.app with your token and check the console.
+
+  - Fix: use() is now useValue() in local-store.ts and at all 8 call sites, in
+    balances.ts, index.tsx and claim.tsx. Nothing else changed. claims/store.ts
+    and claims/[id].tsx had no calls to rename.
+  - Check: npm run check passes, including the 36 tests.
+  - Commit: 510b8af "fix: rename store hook so React Compiler treats it as a
+    hook".
+  - Push: this was the first push to origin/main, so GitHub now has every commit
+    from 77f569f to 510b8af.
+  - Deploy: live at https://naxel1-cashmine.expo.app.
+
+  The bug was mine: I named the hook use, which React Compiler treats as React's
+  own use(). None of the checks caught it because they never render a page.
+  This is a good candidate for the "AI output was wrong" moment in NOTES.md.
+✻ Worked for 51s · done 12:07 PM
+
+❯ Two small UI fixes, nothing else: 1) disable the Claim button on Home when    
+  available is 0 (label "Nothing to claim"); 2) destination options look like   
+  text inputs, show the selected one clearly (radio dot or checkmark + filled   
+  background). npm run check, commit, push, deploy.                             
+
+  Searched for 1 pattern, read 2 files (ctrl+o to expand)
+
+⏺ Update(src/app/index.tsx)
+  ⎿  Added 3 lines, removed 1 line
+      122    const myClaims = myClaimsStore.useValue();
+      123    const intent = intentStore.useValue();
+      124    // One claim per asset at a time, and none while a result is
+            unknown.
+      125 -  const claimDisabled =                                       
+      125 +  const inProgress =                                          
+      126      !!intent || myClaims.some((c) => c.asset === item.asset &&
+            c.status === 'pending');
+      127 +  const nothingToClaim = item.available === 0n;               
+      128 +  const claimDisabled = inProgress || nothingToClaim;         
+      129    return (
+      130      <View style={styles.card}>
+      131        <View style={styles.rowHeader}>
+
+⏺ Update(src/app/index.tsx)
+  ⎿  Added 5 lines, removed 1 line
+      142          accessibilityRole="button"
+      143        >
+      144          <Text style={styles.claimText}>
+      145 -          {claimDisabled ? 'Claim in progress' : `Claim ${item
+          -.asset}`}                                                     
+      145 +          {inProgress                                         
+      146 +            ? 'Claim in progress'                             
+      147 +            : nothingToClaim                                  
+      148 +              ? 'Nothing to claim'                            
+      149 +              : `Claim ${item.asset}`}                        
+      150          </Text>
+      151        </Pressable>
+      152      </View>
+
+⏺ Update(src/app/claim.tsx)
+  ⎿  Added 19 lines, removed 11 lines
+      209            {destinations.length > 1 && (
+      210              <>
+      211                <Text style={styles.label}>Destination</Text>
+      212 -              {destinations.map((d) => (                      
+      213 -                <Pressable                                    
+      214 -                  key={d.id}                                  
+      215 -                  style={[styles.option, destination?.id === d
+          -.id && styles.optionSelected]}                                
+      216 -                  onPress={() => setDestinationId(d.id)}      
+      217 -                  accessibilityRole="radio"                   
+      218 -                  accessibilityState={{ selected: destination?
+          -.id === d.id }}                                               
+      219 -                >                                             
+      220 -                  <Text style={styles.optionText}>{d.label}</T
+          -ext>                                                          
+      221 -                </Pressable>                                  
+      222 -              ))}                                             
+      212 +              {destinations.map((d) => {                      
+      213 +                const selected = destination?.id === d.id;    
+      214 +                return (                                      
+      215 +                  <Pressable                                  
+      216 +                    key={d.id}                                
+      217 +                    style={[styles.option, selected && styles.
+          +optionSelected]}                                              
+      218 +                    onPress={() => setDestinationId(d.id)}    
+      219 +                    accessibilityRole="radio"                 
+      220 +                    accessibilityState={{ selected }}         
+      221 +                  >                                           
+      222 +                    <View style={[styles.radio, selected && st
+          +yles.radioSelected]}>                                         
+      223 +                      {selected && <View style={styles.radioDo
+          +t} />}                                                        
+      224 +                    </View>                                   
+      225 +                    <Text style={[styles.optionText, selected 
+          +&& styles.optionTextSelected]}>                               
+      226 +                      {d.label}                               
+      227 +                    </Text>                                   
+      228 +                  </Pressable>                                
+      229 +                );                                            
+      230 +              })}                                             
+      231                {showErrors && !destination && (
+      232                  <Text style={styles.errorText}>Choose a destin
+           ation.</Text>
+      233                )}
+
+⏺ Update(src/app/claim.tsx)
+  ⎿  Added 17 lines, removed 2 lines
+      378      paddingVertical: 12,
+      379    },
+      380    option: {
+      381 +    flexDirection: 'row',                                     
+      382 +    alignItems: 'center',                                     
+      383 +    gap: 12,                                                  
+      384      borderWidth: 1,
+      385      borderColor: colors.border,
+      386      borderRadius: 10,
+      387      padding: 12,
+      388      backgroundColor: colors.surface,
+      389    },
+      387 -  optionSelected: { borderColor: colors.primary },            
+      388 -  optionText: { color: colors.text, fontSize: 15 },           
+      390 +  optionSelected: { borderColor: colors.primary, backgroundCol
+          +or: colors.primarySoft },                                     
+      391 +  optionText: { flex: 1, color: colors.text, fontSize: 15 },  
+      392 +  optionTextSelected: { fontWeight: '600' },                  
+      393 +  radio: {                                                    
+      394 +    width: 20,                                                
+      395 +    height: 20,                                               
+      396 +    borderRadius: 10,                                         
+      397 +    borderWidth: 2,                                           
+      398 +    borderColor: colors.border,                               
+      399 +    alignItems: 'center',                                     
+      400 +    justifyContent: 'center',                                 
+      401 +  },                                                          
+      402 +  radioSelected: { borderColor: colors.primary },             
+      403 +  radioDot: { width: 10, height: 10, borderRadius: 5, backgrou
+          +ndColor: colors.primary },                                    
+      404    summary: { backgroundColor: colors.surface, borderRadius: 12
+           , padding: 14, gap: 6 },
+      405    row: { flexDirection: 'row', justifyContent: 'space-between'
+           , gap: 12 },
+      406    rowLabel: { color: colors.muted, fontSize: 15 },
+
+⏺ Update(src/theme.ts)
+  ⎿  Added 1 line
+       5    muted: '#5F6670',
+       6    border: '#D9DDE3',
+       7    primary: '#1F6FEB',
+       8 +  primarySoft: '#E8F0FE',                                      
+       9    onPrimary: '#FFFFFF',
+      10    danger: '#C62828',
+      11    dangerBg: '#FDECEC',
+
+  Pushed to main (ctrl+o to expand)
+
+⏺ Both UI fixes are in. Checks pass (36 tests), and they're committed as
+  58aa1b3, pushed and deployed to https://naxel1-cashmine.expo.app. I haven't
+  looked at either change in a browser.
+
+  1. Home: when an asset's available is 0, its Claim button is now disabled and
+     says "Nothing to claim". If a claim for that asset is still running, the
+     button keeps saying "Claim in progress".
+  2. Claim, destination options: each option is now a row with a radio circle on
+     the left. The selected one gets a filled dot, a blue border, a light blue
+     background and a bold label. I added one color, primarySoft, to
+     src/theme.ts for that background.
+
+  You'll only see the destination change on an asset with more than one
+  destination. With a single destination the list isn't shown, and that
+  destination is picked automatically.
+
+✻ Baked for 45s · done 12:15 PM
+
+❯ Activity screen, hard limit 8 minutes, minimal: GET /v1/activity with         
+  useInfiniteQuery (limit 20, nextCursor), zod schema, rows: type               
+  (accrual/reversal/claim), signed amount + asset formatted with existing       
+  amount utils, status, local date. "Load more" button, loading/error/empty     
+  states. Link "Activity" from Home. No new deps, no refactors. npm run check,  
+  commit, push, npm run deploy. Then update NOTES.md "Not done" (remove the     
+  Activity line, add what is missing in it) and README "What works", commit,    
+  push.                                                                         
+
+⏺ Activity: schema + infinite query + screen + Home link.
+
+⏺ Write(src/api/activity.ts)
+  ⎿  Wrote 39 lines to src/api/activity.ts
+       1 import { useInfiniteQuery } from '@tanstack/react-query';
+       2 import { z } from 'zod';
+       3 
+       5 
+       6 // Activity amounts are signed: negative for reversals and claim
+         s.
+       7 const signedAmount = z.string().regex(/^-?(0|[1-9]\d*)(\.\d+)?$/
+       8 
+       9 const activityItemSchema = z.object({
+      10   id: z.string(),
+     … +30 lines (ctrl+o to expand)
+
+⏺ Write(src/app/activity.tsx)
+  ⎿  Wrote 130 lines to src/app/activity.tsx
+      1 import { Stack } from 'expo-router';
+      2 import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text
+        , View } from 'react-native';
+      3 
+      4 import { useActivity, type ActivityItem } from '@/api/activity';
+      6 import { formatAmount, parseAmount } from '@/lib/amount';
+      7 import { colors } from '@/theme';
+      8 
+      9 const TYPE_LABEL = { accrual: 'Payback', reversal: 'Reversal', cl
+        aim: 'Claim' } as const;
+     … +139 lines (ctrl+o to expand)
+
+⏺ Update(src/app/index.tsx)
+  ⎿  Added 7 lines
+      110            </>
+      111          )}
+      112  
+      113 +        <Pressable                                            
+      114 +          onPress={() => router.push('/activity')}            
+      115 +          style={styles.changeToken}                          
+      116 +          accessibilityRole="button"                          
+      117 +        >                                                     
+      118 +          <Text style={styles.link}>Activity</Text>           
+      119 +        </Pressable>                                          
+      120          <Pressable onPress={clear} style={styles.changeToken} 
+           accessibilityRole="button">
+      121            <Text style={styles.link}>Change token</Text>
+      122          </Pressable>
+
+⏺ Bash(npx prettier --write src >/dev/null && npm run check 2>&1 | grep -E
+      'error|Tests |warn|✖' ; git add -A && git commit -qm "feat: activity
+      history with Load more…)
+  ⎿        Tests  36 passed (36)
+     60ea8aa feat: activity history with Load more
+        6310a35..60ea8aa  main -> main
+     Production URL  https://naxel1-cashmine.expo.app
+  ⎿  Updated src/app/activity.tsx (+1 -4)
+      81            {new Date(item.createdAt).toLocaleString()} · {item.s
+          tatus}
+      82          </Text>
+      83        </View>
+      84 -      <Text                                                    
+      85 -        style={[styles.amount, item.amount.startsWith('-') && s
+         -tyles.negative]}                                               
+      86 -        selectable                                             
+      87 -      >                                                        
+      84 +      <Text style={[styles.amount, item.amount.startsWith('-') 
+         +&& styles.negative]} selectable>                               
+      85          {amount} {item.asset}
+      86        </Text>
+      87      </View>
+  ⎿  (timeout 10m)
+
+⏺ Deployed. Now NOTES + README.
+
+⏺ Update(NOTES.md)
+  ⎿  Added 3 lines, removed 1 line
+      75  
+      76  ## Not done / known issues
+      77  
+      78 -- **Activity** (paginated history) is not built. Next: `useInfi
+         -niteQuery` on `/v1/activity` with `nextCursor`.                
+      78 +- **Activity** is minimal: no refresh button or auto-refresh (n
+         +ew items appear on reopen), no filters, claim rows do          
+      79 +  not link to the claim status page, statuses are shown as raw 
+         +API words. Amounts use decimals from the balances              
+      80 +  response; an asset missing there is shown as the API sent it.
+         + No tests for this screen.                                     
+      81  - **Changing the token** clears saved claims and any unconfirme
+          d attempt from the old token, so an unresolved
+      82    attempt is lost. Better: keep claims and attempts per token.
+      83  - **Tests** cover amount parsing, validation, fee, USD totals a
+          nd the displayed balance. There are no component or
+
+⏺ Bash(grep -n "Not yet: activity" README.md && sed -i '' 's/^- Not yet:
+      activity history\./- Activity: paginated history (accruals, reversals,
+      claims) with signed amo…)
+  ⎿  25:- Not yet: activity history.
+           Tests  36 passed (36)
+     8ea5be0 docs: activity in README and NOTES
+        60ea8aa..8ea5be0  main -> main
+  ⎿  Updated README.md (+1 -1)
+      22  - Home: USD total (available + pending + claiming), per-asset b
+          alances, snapshot age, refresh button, auto-refresh every 15 s,
+           loading / error / retry, stale-data banner when a refresh fail
+          s.
+      23  - Claim: pick asset, amount or Max, live validation (min, fee, 
+          decimals, available), fee and receive amount, confirm dialog, i
+          dempotent submit with retries, status page polling until comple
+          ted/failed, "couldn't confirm" recovery with the same key after
+           reload. Balance adjusts immediately after a claim and hands ba
+          ck to the server snapshot.
+      24  - Unit tests (`npm test`): amount parsing/formatting/USD, claim
+           validation and fee, displayed balance after claims.
+      25 -- Not yet: activity history.                                   
+      25 +- Activity: paginated history (accruals, reversals, claims) wit
+         +h signed amounts, status and local date; "Load more", loading /
+         + error / empty states.                                         
+      26  
+      27  Decisions, AI usage and known issues: see [NOTES.md](NOTES.md).
+
+⏺ The Activity screen is live at https://naxel1-cashmine.expo.app, and the
+  README and NOTES updates are pushed. Checks pass (36 tests), but I haven't
+  opened the screen against the real API — please open it once with your token
+  and tap "Load more".
+
+  What I built (60ea8aa, pushed and deployed)
+  - src/api/activity.ts: zod schema that allows signed amounts, and
+    useInfiniteQuery with limit=20 and the cursor from nextCursor.
+  - src/app/activity.tsx: a list of rows showing:
+    - the type ("Payback", "Reversal" or "Claim"), plus the exchange when there
+      is one;
+    - the local date and status;
+    - the signed amount and asset, formatted with the existing amount utils,
+      negatives in red.
+  - It has "Load more" plus loading, error with Retry, empty, and "Could not
+    load more" states.
+  - An "Activity" link on Home, above "Change token".
+  - No new packages, and no other code changed.
+
+  Docs (8ea5be0, pushed)
+  - NOTES "Not done": I replaced the Activity line with what's still missing:
+    - no refresh button or auto-refresh;
+    - no filters;
+    - claim rows don't link to the claim status page;
+    - statuses show the raw API words;
+    - no tests for this screen.
+  - README "What works": now lists Activity instead of "Not yet".
+
+  The activity response has no decimals field, so amounts are formatted with
+  each asset's decimals from the balances response. An asset that isn't in
+  balances shows its amount exactly as the API sent it. I wrote this into NOTES.
+
+✻ Crunched for 1m 9s · done 12:37 PM
+
+❯ Tiny fix, nothing else: in src/app/activity.tsx, for a claim row with status  
+  "failed", show the amount grey with line-through instead of red (the amount   
+  was returned). npm run check, commit, push, npm run deploy.                   
+
+  Searched for 1 pattern (ctrl+o to expand)
+
+⏺ Bash(python3 - <<'EOF'
+      p='src/app/activity.tsx'…)
+  ⎿        Tests  36 passed (36)
+     170ae42 fix: show failed claim amounts as voided in activity
+        8ea5be0..170ae42  main -> main
+     Production URL  https://naxel1-cashmine.expo.app
+  ⎿  Updated src/app/activity.tsx (+11 -1)
+      81            {new Date(item.createdAt).toLocaleString()} · {item.s
+          tatus}
+      82          </Text>
+      83        </View>
+      84 -      <Text style={[styles.amount, item.amount.startsWith('-') 
+         -&& styles.negative]} selectable>                               
+      84 +      <Text                                                    
+      85 +        style={[                                               
+      86 +          styles.amount,                                       
+      87 +          // A failed claim's amount went back to available: sh
+         +ow it as void, not as a debit.                                 
+      88 +          item.type === 'claim' && item.status === 'failed'    
+      89 +            ? styles.voided                                    
+      90 +            : item.amount.startsWith('-') && styles.negative,  
+      91 +        ]}                                                     
+      92 +        selectable                                             
+      93 +      >                                                        
+      94          {amount} {item.asset}
+      95        </Text>
+      96      </View>
+     ...
+      121      textAlign: 'right',
+      122    },
+      123    negative: { color: colors.danger },
+      124 +  voided: { color: colors.muted, textDecorationLine: 'line-thr
+          +ough' },                                                      
+      125    footer: { gap: 8, paddingVertical: 8 },
+      126    button: {
+      127      backgroundColor: colors.primary,
+  ⎿  (timeout 10m)
+
+⏺ In Activity, a failed claim's amount now shows grey with a line through it
+  instead of red. Other negative amounts stay red. The change is only in
+  src/app/activity.tsx. npm run check passes (36 tests); it's committed as
+  170ae42, pushed and deployed to https://naxel1-cashmine.expo.app. I haven't
+  looked at it in a browser.
+✻ Cooked for 32s · done 12:41 PM
