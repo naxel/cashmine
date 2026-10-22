@@ -1,34 +1,23 @@
-# <App name>
+# CashMine payback
 
-Live: <url> · Brief received <HH:MM UTC>, submitted <HH:MM UTC>
+Phone-sized web app (Expo, React Native Web) to view payback balances and claim them.
 
-<One sentence: what the app does.>
+Live: TBD (first deploy pending)
 
 ## Run locally
 
 ```
 npm install
-cp .env.example .env.local   # fill API_BASE_URL and API_TOKEN
 npm run web
 ```
 
-Deploy: `npm run deploy` (EAS Hosting).
+Open the printed URL and paste your API token on first open. The token is stored in the browser only.
 
-## Stack
+Deploy: `npm run deploy` (EAS Hosting). Checks: `npm run check`.
 
-Expo SDK, Expo Router (web output: server), TypeScript, TanStack Query, zod.
+## What works
 
-## Architecture
+- Typed API client (`src/api/client.ts`) with zod validation, timeouts and typed errors.
+- UI: not built yet.
 
-- `src/app/api/[...path]+api.ts`: server-side proxy, keeps the API token out of the client bundle.
-- `src/api/`: typed client and one hook per endpoint; responses validated with zod.
-
-## Decisions
-
-## Assumptions
-
-## Not done / next steps
-
-## AI usage
-
-Built with Claude Code; full sessions in `ai-logs/`. Project setup (lint, format, proxy, typed client) came from my starter script and is the first commit.
+Decisions, AI usage and known issues: see [NOTES.md](NOTES.md).
