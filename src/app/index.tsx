@@ -110,6 +110,13 @@ export default function Home() {
           </>
         )}
 
+        <Pressable
+          onPress={() => router.push('/activity')}
+          style={styles.changeToken}
+          accessibilityRole="button"
+        >
+          <Text style={styles.link}>Activity</Text>
+        </Pressable>
         <Pressable onPress={clear} style={styles.changeToken} accessibilityRole="button">
           <Text style={styles.link}>Change token</Text>
         </Pressable>
