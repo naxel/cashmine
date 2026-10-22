@@ -22,6 +22,6 @@ Deploy: `npm run deploy` (EAS Hosting). Checks: `npm run check`.
 - Home: USD total (available + pending + claiming), per-asset balances, snapshot age, refresh button, auto-refresh every 15 s, loading / error / retry, stale-data banner when a refresh fails.
 - Claim: pick asset, amount or Max, live validation (min, fee, decimals, available), fee and receive amount, confirm dialog, idempotent submit with retries, status page polling until completed/failed, "couldn't confirm" recovery with the same key after reload. Balance adjusts immediately after a claim and hands back to the server snapshot.
 - Unit tests (`npm test`): amount parsing/formatting/USD, claim validation and fee, displayed balance after claims.
-- Not yet: activity history.
+- Activity: paginated history (accruals, reversals, claims) with signed amounts, status and local date; "Load more", loading / error / empty states.
 
 Decisions, AI usage and known issues: see [NOTES.md](NOTES.md).

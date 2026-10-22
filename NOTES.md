@@ -75,7 +75,9 @@ with 0 available, and destination options looked like text fields. Both were fix
 
 ## Not done / known issues
 
-- **Activity** (paginated history) is not built. Next: `useInfiniteQuery` on `/v1/activity` with `nextCursor`.
+- **Activity** is minimal: no refresh button or auto-refresh (new items appear on reopen), no filters, claim rows do
+  not link to the claim status page, statuses are shown as raw API words. Amounts use decimals from the balances
+  response; an asset missing there is shown as the API sent it. No tests for this screen.
 - **Changing the token** clears saved claims and any unconfirmed attempt from the old token, so an unresolved
   attempt is lost. Better: keep claims and attempts per token.
 - **Tests** cover amount parsing, validation, fee, USD totals and the displayed balance. There are no component or
