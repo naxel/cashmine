@@ -44,11 +44,11 @@ export function createLocalStore<T>(key: string, schema: z.ZodType<T>, fallback:
     };
   }
 
-  function use(): T {
+  function useValue(): T {
     return useSyncExternalStore(subscribe, read, () => fallback);
   }
 
-  return { read, write, use };
+  return { read, write, useValue };
 }
 
 function safeJson(raw: string): unknown {

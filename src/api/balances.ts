@@ -68,7 +68,7 @@ function useBalanceSnapshot() {
 // Snapshot adjusted for claims this browser submitted that the snapshot does not include yet.
 export function useBalances() {
   const query = useBalanceSnapshot();
-  const myClaims = myClaimsStore.use();
+  const myClaims = myClaimsStore.useValue();
   const snapshot = query.data;
 
   useEffect(() => {

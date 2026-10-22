@@ -119,8 +119,8 @@ export default function Home() {
 }
 
 function BalanceRow({ item }: { item: Balance }) {
-  const myClaims = myClaimsStore.use();
-  const intent = intentStore.use();
+  const myClaims = myClaimsStore.useValue();
+  const intent = intentStore.useValue();
   // One claim per asset at a time, and none while a result is unknown.
   const claimDisabled =
     !!intent || myClaims.some((c) => c.asset === item.asset && c.status === 'pending');
@@ -148,8 +148,8 @@ function BalanceRow({ item }: { item: Balance }) {
 }
 
 function ClaimBanners() {
-  const intent = intentStore.use();
-  const pending = myClaimsStore.use().filter((c) => c.status === 'pending');
+  const intent = intentStore.useValue();
+  const pending = myClaimsStore.useValue().filter((c) => c.status === 'pending');
   usePendingClaims(pending.map((c) => c.id));
   return (
     <>

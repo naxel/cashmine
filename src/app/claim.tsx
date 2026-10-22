@@ -22,7 +22,7 @@ import { colors } from '@/theme';
 export default function ClaimScreen() {
   const params = useLocalSearchParams<{ asset?: string }>();
   // A saved intent means a claim whose result is unknown: only Retry with the same key is offered.
-  const intent = intentStore.use();
+  const intent = intentStore.useValue();
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
@@ -93,7 +93,7 @@ function ClaimForm({
   onConfirm: (intent: ClaimIntent) => void;
 }) {
   const { data: balances, isPending } = useBalances();
-  const myClaims = myClaimsStore.use();
+  const myClaims = myClaimsStore.useValue();
   const busyAssets = new Set(myClaims.filter((c) => c.status === 'pending').map((c) => c.asset));
 
   const [asset, setAsset] = useState(initialAsset);
