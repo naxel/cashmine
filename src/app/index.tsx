@@ -1,10 +1,12 @@
-import { Stack } from 'expo-router';
+import { router, Stack } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { useBalances, type Balance } from '@/api/balances';
+import { usePendingClaims } from '@/api/claims';
 import { ApiError } from '@/api/client';
 import { useToken } from '@/auth/token-context';
+import { intentStore, myClaimsStore } from '@/claims/store';
 import { formatAmount, formatUsd, toCents } from '@/lib/amount';
 import { colors } from '@/theme';
 
@@ -98,6 +100,8 @@ export default function Home() {
               </View>
             )}
 
+            <ClaimBanners />
+
             {data.items.length === 0 ? (
               <Text style={styles.muted}>No balances yet.</Text>
             ) : (
@@ -115,6 +119,11 @@ export default function Home() {
 }
 
 function BalanceRow({ item }: { item: Balance }) {
+  const myClaims = myClaimsStore.use();
+  const intent = intentStore.use();
+  // One claim per asset at a time, and none while a result is unknown.
+  const claimDisabled =
+    !!intent || myClaims.some((c) => c.asset === item.asset && c.status === 'pending');
   return (
     <View style={styles.card}>
       <View style={styles.rowHeader}>
@@ -124,7 +133,53 @@ function BalanceRow({ item }: { item: Balance }) {
       <Line label="Available" value={formatAmount(item.available, item.decimals)} strong />
       <Line label="Pending" value={formatAmount(item.pending, item.decimals)} />
       <Line label="Claiming" value={formatAmount(item.claiming, item.decimals)} />
+      <Pressable
+        style={[styles.claimButton, claimDisabled && styles.disabled]}
+        disabled={claimDisabled}
+        onPress={() => router.push({ pathname: '/claim', params: { asset: item.asset } })}
+        accessibilityRole="button"
+      >
+        <Text style={styles.claimText}>
+          {claimDisabled ? 'Claim in progress' : `Claim ${item.asset}`}
+        </Text>
+      </Pressable>
     </View>
+  );
+}
+
+function ClaimBanners() {
+  const intent = intentStore.use();
+  const pending = myClaimsStore.use().filter((c) => c.status === 'pending');
+  usePendingClaims(pending.map((c) => c.id));
+  return (
+    <>
+      {intent && (
+        <Pressable
+          style={styles.warningBox}
+          onPress={() => router.push('/claim')}
+          accessibilityRole="button"
+        >
+          <Text style={styles.warningText}>
+            Claim of {intent.amount} {intent.asset} not confirmed yet.
+          </Text>
+          <Text style={styles.link}>Check / Retry</Text>
+        </Pressable>
+      )}
+      {pending.map((c) => (
+        <Pressable
+          key={c.id}
+          style={styles.infoBox}
+          onPress={() => router.push({ pathname: '/claims/[id]', params: { id: c.id } })}
+          accessibilityRole="button"
+        >
+          <ActivityIndicator />
+          <Text style={styles.infoText}>
+            Claiming {c.amount} {c.asset}…
+          </Text>
+          <Text style={styles.link}>Details</Text>
+        </Pressable>
+      ))}
+    </>
   );
 }
 
@@ -226,4 +281,21 @@ const styles = StyleSheet.create({
   buttonText: { color: colors.onPrimary, fontSize: 16, fontWeight: '600' },
   link: { color: colors.primary, fontSize: 14, fontWeight: '600' },
   changeToken: { alignSelf: 'center', paddingVertical: 16 },
+  claimButton: {
+    marginTop: 8,
+    borderRadius: 10,
+    paddingVertical: 10,
+    alignItems: 'center',
+    backgroundColor: colors.primary,
+  },
+  claimText: { color: colors.onPrimary, fontSize: 15, fontWeight: '600' },
+  infoBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: colors.surface,
+    borderRadius: 10,
+    padding: 12,
+  },
+  infoText: { flex: 1, color: colors.text, fontSize: 14 },
 });

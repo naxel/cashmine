@@ -2,6 +2,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useCallback, useSyncExternalStore } from 'react';
 
 import { clearToken, getToken, setToken } from '@/api/client';
+import { clearClaimState } from '@/claims/store';
 
 const listeners = new Set<() => void>();
 
@@ -33,6 +34,8 @@ export function useToken() {
   const save = useCallback(
     (value: string) => {
       queryClient.clear();
+      // Local claims belong to the previous token.
+      clearClaimState();
       setToken(value);
       notify();
     },
@@ -41,6 +44,7 @@ export function useToken() {
 
   const clear = useCallback(() => {
     queryClient.clear();
+    clearClaimState();
     clearToken();
     notify();
   }, [queryClient]);

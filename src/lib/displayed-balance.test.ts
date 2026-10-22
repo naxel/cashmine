@@ -113,12 +113,16 @@ describe('displayBalances', () => {
 });
 
 describe('pruneClaims', () => {
-  it('drops claims the snapshot includes and failed claims', () => {
+  it('drops failed claims and completed claims the snapshot includes; keeps pending', () => {
     const claims = [
-      claim(),
-      claim({ id: 'clm_2', createdAt: '2026-10-22T09:00:20.000Z' }),
-      claim({ id: 'clm_3', createdAt: '2026-10-22T09:00:20.000Z', status: 'failed' }),
+      claim({ id: 'pending_included' }),
+      claim({ id: 'completed_included', status: 'completed' }),
+      claim({ id: 'completed_newer', createdAt: '2026-10-22T09:00:20.000Z', status: 'completed' }),
+      claim({ id: 'failed', createdAt: '2026-10-22T09:00:20.000Z', status: 'failed' }),
     ];
-    expect(pruneClaims(claims, '2026-10-22T09:00:15.000Z').map((c) => c.id)).toEqual(['clm_2']);
+    expect(pruneClaims(claims, '2026-10-22T09:00:15.000Z').map((c) => c.id)).toEqual([
+      'pending_included',
+      'completed_newer',
+    ]);
   });
 });

@@ -1,7 +1,10 @@
 import { useQuery } from '@tanstack/react-query';
+import { useEffect, useMemo } from 'react';
 import { z } from 'zod';
 
-import { AMOUNT_RE, parseAmount, parseDecimal, usdValue, type Decimal } from '@/lib/amount';
+import { myClaimsStore, replaceMyClaims } from '@/claims/store';
+import { AMOUNT_RE, parseAmount, parseDecimal, type Decimal } from '@/lib/amount';
+import { displayBalances, pruneClaims, type DisplayedItem } from '@/lib/displayed-balance';
 
 import { api, ApiError } from './client';
 
@@ -20,40 +23,30 @@ const balanceItemSchema = z
     const available = parseAmount(item.available, item.decimals);
     const pending = parseAmount(item.pending, item.decimals);
     const claiming = parseAmount(item.claiming, item.decimals);
-    const usdPrice = parseDecimal(item.usdPrice) as Decimal;
     if (available === null || pending === null || claiming === null) {
       ctx.addIssue({ code: 'custom', message: `${item.asset}: more places than decimals` });
       return z.NEVER;
     }
-    const total = available + pending + claiming;
     return {
       asset: item.asset,
       decimals: item.decimals,
       available,
       pending,
       claiming,
-      usdPrice,
-      // USD at USD_SCALE; round only when displaying.
-      usdTotal: usdValue(total, item.decimals, usdPrice),
+      usdPrice: parseDecimal(item.usdPrice) as Decimal,
     };
   });
 
-export const balancesSchema = z
-  .object({
-    asOf: z.iso.datetime(),
-    items: z.array(balanceItemSchema),
-  })
-  .transform((b) => ({
-    ...b,
-    usdTotal: b.items.reduce((sum, item) => sum + item.usdTotal, 0n),
-  }));
+export const balancesSchema = z.object({
+  asOf: z.iso.datetime(),
+  items: z.array(balanceItemSchema),
+});
 
-export type Balances = z.infer<typeof balancesSchema>;
-export type Balance = Balances['items'][number];
+export type Balance = DisplayedItem;
 
 export const balancesKey = ['balances'] as const;
 
-export function useBalances() {
+function useBalanceSnapshot() {
   return useQuery({
     queryKey: balancesKey,
     queryFn: ({ signal }) => api('/balances', balancesSchema, { signal }),
@@ -70,4 +63,21 @@ export function useBalances() {
         ? error.retryAfterMs
         : Math.min(1000 * 2 ** attempt, 8000),
   });
+}
+
+// Snapshot adjusted for claims this browser submitted that the snapshot does not include yet.
+export function useBalances() {
+  const query = useBalanceSnapshot();
+  const myClaims = myClaimsStore.use();
+  const snapshot = query.data;
+
+  useEffect(() => {
+    if (snapshot) replaceMyClaims(pruneClaims(myClaimsStore.read(), snapshot.asOf));
+  }, [snapshot, myClaims]);
+
+  const data = useMemo(
+    () => (snapshot ? displayBalances(snapshot, myClaims) : undefined),
+    [snapshot, myClaims],
+  );
+  return { ...query, data };
 }

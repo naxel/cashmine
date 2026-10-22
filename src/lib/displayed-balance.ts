@@ -57,7 +57,11 @@ export function displayBalances(snapshot: Snapshot, myClaims: MyClaim[]): Displa
   };
 }
 
-// Claims still worth keeping: not yet in a snapshot and not failed.
+// Claims still worth keeping. Failed: nothing to adjust. Completed and in a snapshot: done.
+// Pending stays until polling sees a final status (blocks a second claim, shows progress);
+// displayBalances already ignores it once the snapshot includes it.
 export function pruneClaims(myClaims: MyClaim[], asOf: string): MyClaim[] {
-  return myClaims.filter((c) => c.status !== 'failed' && !snapshotIncludes(asOf, c));
+  return myClaims.filter(
+    (c) => c.status === 'pending' || (c.status === 'completed' && !snapshotIncludes(asOf, c)),
+  );
 }
